@@ -1,0 +1,6 @@
+.env
+credentials.json
+token.json
+*.pdf
+paper/
+NEVER_PUBLIC.local.md
