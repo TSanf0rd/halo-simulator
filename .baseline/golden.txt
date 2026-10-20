@@ -1,0 +1,5 @@
+static 5.42 4.92 5.96 100% 0.0
+routine 4.04 3.33 4.75 95% 3.9
+mozo 3.58 2.96 4.21 96% 1.2
+hybrid 2.96 2.29 3.58 95% 4.6
+outings 131 wanders 57 events 84

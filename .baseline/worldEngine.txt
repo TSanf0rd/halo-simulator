@@ -1,0 +1,145 @@
+// FUNCTION_START worldEngine — PROTECTED, baseline in .baseline/worldEngine.txt
+/* HALO simulation — world model
+ * A synthetic neighborhood: a 10 x 7 street grid with 400 m blocks.
+ * Everything is in meters. Routing uses Dijkstra with cheaper arterial roads.
+ */
+(function (root) {
+  var H = (root.HALO = root.HALO || {});
+
+  var SP = 400; // block spacing in meters
+  var NX = 10, NY = 7;
+  var ART_ROWS = [3], ART_COLS = [5]; // arterial roads (faster, preferred by routing)
+
+  function id(x, y) { return y * NX + x; }
+  function xy(n) { return [n % NX, Math.floor(n / NX)]; }
+  function pos(n) { return [(n % NX) * SP, Math.floor(n / NX) * SP]; }
+
+  function neighbors(n) {
+    var c = xy(n), x = c[0], y = c[1], out = [];
+    if (x > 0) out.push(id(x - 1, y));
+    if (x < NX - 1) out.push(id(x + 1, y));
+    if (y > 0) out.push(id(x, y - 1));
+    if (y < NY - 1) out.push(id(x, y + 1));
+    return out;
+  }
+  function isArterial(a, b) {
+    var A = xy(a), B = xy(b);
+    return (A[1] === B[1] && ART_ROWS.indexOf(A[1]) >= 0) || (A[0] === B[0] && ART_COLS.indexOf(A[0]) >= 0);
+  }
+  function edgeKey(a, b) { return a < b ? a + '-' + b : b + '-' + a; }
+  function manhattan(a, b) { var A = xy(a), B = xy(b); return Math.abs(A[0] - B[0]) + Math.abs(A[1] - B[1]); }
+
+  function dijkstra(a, b, costFn) {
+    var N = NX * NY, dist = [], prev = [], done = [], i;
+    for (i = 0; i < N; i++) { dist.push(Infinity); prev.push(-1); done.push(false); }
+    dist[a] = 0;
+    for (;;) {
+      var u = -1, best = Infinity;
+      for (i = 0; i < N; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i; }
+      if (u === -1 || u === b) break;
+      done[u] = true;
+      var nb = neighbors(u);
+      for (i = 0; i < nb.length; i++) {
+        var v = nb[i], c = dist[u] + costFn(u, v);
+        if (c < dist[v] - 1e-9) { dist[v] = c; prev[v] = u; }
+      }
+    }
+    var path = [];
+    for (var n = b; n !== -1; n = prev[n]) path.unshift(n);
+    return path;
+  }
+  function roadCost(u, v) { return isArterial(u, v) ? 0.6 : 1; }
+
+  /* ---------- polyline geometry ---------- */
+  function polyLength(poly) {
+    var L = 0;
+    for (var i = 1; i < poly.length; i++) L += Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]);
+    return L;
+  }
+  function pointAt(poly, d) {
+    if (d <= 0) return poly[0].slice();
+    for (var i = 1; i < poly.length; i++) {
+      var a = poly[i - 1], b = poly[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (d <= L) { var t = L ? d / L : 0; return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; }
+      d -= L;
+    }
+    return poly[poly.length - 1].slice();
+  }
+  function distToSeg(p, a, b) {
+    var dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+    var t = L2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+  }
+  function distToPoly(p, poly) {
+    if (poly.length === 1) return Math.hypot(p[0] - poly[0][0], p[1] - poly[0][1]);
+    var m = Infinity;
+    for (var i = 1; i < poly.length; i++) m = Math.min(m, distToSeg(p, poly[i - 1], poly[i]));
+    return m;
+  }
+  function dist(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1]); }
+
+  function makeRoute(nodes) {
+    var poly = nodes.map(pos);
+    return { nodes: nodes, poly: poly, length: polyLength(poly) };
+  }
+  var cache = {};
+  /** Fastest driving route (prefers arterials). */
+  function route(a, b) {
+    var k = 'r' + a + '>' + b;
+    return cache[k] || (cache[k] = makeRoute(dijkstra(a, b, roadCost)));
+  }
+  /** An alternative route that avoids the edges of the main route where possible. */
+  function detour(a, b) {
+    var k = 'd' + a + '>' + b;
+    if (cache[k]) return cache[k];
+    var main = route(a, b), used = {};
+    for (var i = 1; i < main.nodes.length; i++) used[edgeKey(main.nodes[i - 1], main.nodes[i])] = true;
+    return (cache[k] = makeRoute(dijkstra(a, b, function (u, v) { return roadCost(u, v) * (used[edgeKey(u, v)] ? 3 : 1); })));
+  }
+  /** Walking path: shortest by distance, ignores arterials. */
+  function walkPath(a, b) { return dijkstra(a, b, function () { return 1; }); }
+
+  var PLACES = [
+    { key: 'home',     name: 'Home',              short: 'Home',     node: id(2, 5) },
+    { key: 'clinic',   name: 'Riverside Clinic',  short: 'Clinic',   node: id(8, 1) },
+    { key: 'grocery',  name: 'Market St Grocery', short: 'Grocery',  node: id(6, 4) },
+    { key: 'church',   name: "St. Anne's Church", short: 'Church',   node: id(1, 1) },
+    { key: 'center',   name: 'Community Center',  short: 'Center',   node: id(5, 2) },
+    { key: 'pharmacy', name: 'Corner Pharmacy',   short: 'Pharmacy', node: id(3, 3) },
+    { key: 'friend',   name: "Martha's house",    short: 'Martha',   node: id(8, 5) },
+    { key: 'diner',    name: 'Elm St Diner',      short: 'Diner',    node: id(7, 3) },
+    { key: 'bank',     name: 'First Bank',        short: 'Bank',     node: id(4, 0) },
+    { key: 'park',     name: 'Oak Park',          short: 'Park',     node: id(0, 3) }
+  ];
+  PLACES.forEach(function (p) { p.pos = pos(p.node); });
+  function place(key) { for (var i = 0; i < PLACES.length; i++) if (PLACES[i].key === key) return PLACES[i]; return null; }
+
+  /* ---------- seeded randomness ---------- */
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function gauss(rng) {
+    var u = 0, v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  H.world = {
+    SP: SP, NX: NX, NY: NY, ART_ROWS: ART_ROWS, ART_COLS: ART_COLS,
+    id: id, xy: xy, pos: pos, neighbors: neighbors, manhattan: manhattan, isArterial: isArterial,
+    route: route, detour: detour, walkPath: walkPath, makeRoute: makeRoute,
+    polyLength: polyLength, pointAt: pointAt, distToPoly: distToPoly, dist: dist,
+    PLACES: PLACES, place: place
+  };
+  H.rng = { mulberry32: mulberry32, gauss: gauss };
+})(typeof window !== 'undefined' ? window : globalThis);
+// FUNCTION_END worldEngine

@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How it works · HALO Simulator</title>
+<meta name="description" content="A guided walkthrough of HALO: conversation, Synthetic Memory, calendar, and the Mobile Zone, with an assistant that asks versus one that fills in defaults.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+/* Design tokens — canonical: index.html (taken unchanged from v2 css/style.css). Keep in sync by hand.
+ * Color carries meaning: teal = home geofence, indigo = MoZo, ochre = learned routine, crimson = alert.
+ */
+:root{
+  --bg:#F3F6F7; --card:#FFFFFF; --paper:#E6ECEE; --street:#FFFFFF; --park:#CFE3D2; --block:#D6DEE3;
+  --ink:#1C2A39; --muted:#566676; --line:#D2DADF;
+  --zone:#23877B; --zone-soft:#E1F1EE;
+  --mozo:#4F63C9; --mozo-soft:#E8EBFA;
+  --routine:#A0731F; --routine-soft:#F6EEDC;
+  --alert:#C8324A; --alert-soft:#FBE7EA;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10161D; --card:#18212B; --paper:#1A242E; --street:#2A3743; --park:#1F3528; --block:#212C37;
+    --ink:#E5ECF1; --muted:#98A7B4; --line:#2B3946;
+    --zone:#4CB6A8; --zone-soft:#17322E;
+    --mozo:#8C9BF2; --mozo-soft:#232A4A;
+    --routine:#D9A441; --routine-soft:#3A2F17;
+    --alert:#F2687E; --alert-soft:#3A1E25;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10161D; --card:#18212B; --paper:#1A242E; --street:#2A3743; --park:#1F3528; --block:#212C37;
+  --ink:#E5ECF1; --muted:#98A7B4; --line:#2B3946;
+  --zone:#4CB6A8; --zone-soft:#17322E;
+  --mozo:#8C9BF2; --mozo-soft:#232A4A;
+  --routine:#D9A441; --routine-soft:#3A2F17;
+  --alert:#F2687E; --alert-soft:#3A1E25;
+}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.5}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--mozo);outline-offset:2px}
+[hidden]{display:none !important}
+
+.wrap{max-width:1240px;margin:0 auto;padding:0 20px}
+
+/* ---------- masthead (canonical: index.html) ---------- */
+.top{background:var(--card);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;padding-top:14px;padding-bottom:14px}
+.mark{font-weight:700;letter-spacing:.14em;font-size:.9rem;color:inherit;text-decoration:none}
+.mark span{color:var(--muted);font-weight:400;letter-spacing:.02em;margin-left:8px}
+.top nav{display:flex;flex-wrap:wrap;gap:4px 18px}
+.top nav a{color:var(--muted);font-size:.9rem;text-decoration:none}
+.top nav a:hover{color:var(--ink);text-decoration:underline}
+.top nav a[aria-current="page"]{color:var(--ink);font-weight:700}
+
+.pagehead{padding:28px 0 6px}
+.pagehead h1{margin:0;font-size:clamp(1.5rem,2.6vw,2rem);line-height:1.15;letter-spacing:-0.01em}
+.illus{display:flex;gap:10px;align-items:flex-start;margin:14px 0 18px;padding:10px 14px;border:1px dashed var(--muted);border-radius:10px;background:var(--card);font-size:.92rem;color:var(--muted);max-width:90ch}
+.illus b{color:var(--ink);flex-shrink:0;font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;padding-top:2px}
+
+/* ---------- shared components (canonical: v2 css/style.css) ---------- */
+main .wrap{padding-bottom:40px}
+.intro{color:var(--muted);max-width:75ch;margin:0 0 16px}
+.intro strong{color:var(--ink)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.card > h2,.card > h3{font-size:1rem;margin:0;padding:12px 16px;border-bottom:1px solid var(--line)}
+.card h2 small,.card h3 small{font-weight:400;color:var(--muted);margin-left:6px}
+.body{padding:12px 16px 14px}
+.empty{color:var(--muted);margin:0}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--card)}
+.seg button{border:0;background:transparent;padding:6px 14px;border-radius:999px;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--card);font-weight:700}
+.btn{border:1px solid var(--line);background:var(--card);padding:8px 14px;border-radius:9px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--ink);color:var(--card);border-color:var(--ink);font-weight:700}
+.btn.blue{background:var(--mozo);border-color:var(--mozo);color:var(--card);font-weight:700}
+.btn:disabled{opacity:.4;cursor:default}
+
+/* ---------- map (canonical: v2 css/style.css) ---------- */
+.mapbox{position:relative;background:var(--paper);border-radius:14px 14px 0 0;overflow:hidden}
+svg.map{display:block;width:100%;height:auto}
+.map .ground{fill:var(--paper)}
+.map .block{fill:var(--block)}
+.map .park{fill:var(--park)}
+.map .street{stroke:var(--street);stroke-width:56;fill:none;stroke-linecap:round}
+.map .street.arterial{stroke-width:90}
+.map .homezone{fill:var(--zone);fill-opacity:.16;stroke:var(--zone);stroke-width:12;stroke-dasharray:36 26}
+.map .corr{fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:.24}
+.map .dest{fill-opacity:.16;stroke-width:10;stroke-dasharray:30 22}
+.map .mozo .corr{stroke:var(--mozo)} .map .mozo .dest{fill:var(--mozo);stroke:var(--mozo)}
+.map .routine .corr{stroke:var(--routine)} .map .routine .dest{fill:var(--routine);stroke:var(--routine)}
+.map .mozo.bad .corr{stroke:var(--alert)} .map .mozo.bad .dest{fill:var(--alert);stroke:var(--alert)}
+.map .house{fill:var(--ink)}
+.map .pin{fill:var(--card);stroke:var(--ink);stroke-width:14}
+.map .plabel{font-size:84px;font-weight:700;fill:var(--ink);paint-order:stroke;stroke:var(--paper);stroke-width:18px;stroke-linejoin:round}
+.map .plabel.short{display:none}
+.map .plan{fill:none;stroke:var(--ink);stroke-width:14;stroke-dasharray:4 30;stroke-linecap:round;opacity:.5}
+.map .trail{fill:none;stroke:var(--ink);stroke-width:18;stroke-linecap:round;stroke-linejoin:round;opacity:.35}
+.map .fix{fill:none;stroke:var(--ink);stroke-width:10;opacity:.6}
+.map .tag{stroke:var(--card);stroke-width:16;fill:var(--zone);transition:fill .25s}
+.map .tag[data-state="mozo"]{fill:var(--mozo)}
+.map .tag[data-state="routine"]{fill:var(--routine)}
+.map .tag[data-state="alert"]{fill:var(--alert)}
+.map .tag[data-state="moving"]{fill:var(--ink)}
+.map .pulse{fill:none;stroke:var(--alert);stroke-width:14;opacity:0}
+.map .pulse.on{animation:pulse 1.4s ease-out infinite}
+@keyframes pulse{0%{r:50;opacity:.9}100%{r:190;opacity:0}}
+.clock{position:absolute;top:12px;left:12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 12px;line-height:1.25}
+.clock .d{font-size:.82rem;color:var(--muted)}
+.clock .t{font-size:1.4rem;font-weight:700;font-variant-numeric:tabular-nums}
+.status{display:flex;align-items:center;gap:10px;padding:11px 16px;border-top:1px solid var(--line);background:var(--card);font-weight:700;border-radius:0 0 14px 14px}
+.status .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;background:var(--zone)}
+.status.safe{background:var(--zone-soft)}
+.status.mozo{background:var(--mozo-soft)} .status.mozo .dot{background:var(--mozo)}
+.status.alert{background:var(--alert-soft);color:var(--alert)} .status.alert .dot{background:var(--alert)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.85rem;color:var(--muted);margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;display:inline-block}
+.sw.zone{background:var(--zone);opacity:.55}.sw.mozo{background:var(--mozo);opacity:.55}.sw.routine{background:var(--routine);opacity:.55}.sw.alert{background:var(--alert)}
+.sw.tag{background:var(--ink);border-radius:50%}
+
+/* ---------- walkthrough (canonical: v2 css/style.css) ---------- */
+.story-grid{display:grid;grid-template-columns:minmax(280px,350px) minmax(0,1fr);gap:18px}
+.chat{display:flex;flex-direction:column;height:620px}
+.feed{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.feed .empty{margin:auto;text-align:center;max-width:28ch}
+.msg{max-width:86%;display:flex;flex-direction:column}
+.msg.margaret{align-self:flex-end;align-items:flex-end}
+.who{font-size:.8rem;color:var(--muted);margin:0 4px 2px}
+.bubble{padding:9px 13px;border-radius:14px;background:var(--paper)}
+.margaret .bubble{background:var(--ink);color:var(--card);border-bottom-right-radius:4px}
+.halo .bubble,.assistant .bubble{border-bottom-left-radius:4px}
+.assistant .bubble{background:var(--alert-soft)}
+.proposal{background:var(--mozo-soft);border:1.5px solid var(--mozo)}
+.proposal dl{margin:8px 0 0;display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.92rem}
+.proposal dt{color:var(--muted)} .proposal dd{margin:0;font-weight:700}
+.proposal .approve{margin-top:10px;border:0;background:var(--mozo);color:var(--card);padding:7px 14px;border-radius:8px;cursor:pointer;font-weight:700}
+.proposal .approved{margin-top:8px;font-size:.88rem;color:var(--mozo);font-weight:700}
+.panels{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:14px;margin-top:14px}
+.pipe{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:.93rem}
+.pipe li{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:6px}
+.pipe .n{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line);font-size:.72rem;display:grid;place-items:center;color:var(--muted)}
+.pipe .st{font-size:.78rem;color:var(--muted)}
+.pipe li[data-s="running"] .n{border-color:var(--mozo);background:var(--mozo);color:var(--card)}
+.pipe li[data-s="running"] .st{color:var(--mozo)}
+.pipe li[data-s="done"] .n{border-color:var(--zone);background:var(--zone);color:var(--card)}
+.pipe li[data-s="waiting"] .n{border-color:var(--mozo);color:var(--mozo)}
+.pipe li[data-s="waiting"] .st{color:var(--mozo);font-weight:700}
+.pipe li[data-s="skipped"] .lbl{text-decoration:line-through;color:var(--muted)}
+.pipe li[data-s="skipped"] .st{color:var(--alert);font-weight:700}
+pre.json{margin:12px 0 0;padding:10px 12px;background:var(--paper);border-radius:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.78rem;line-height:1.55;overflow-x:auto;white-space:pre}
+.json .k{color:var(--muted)} .json .bad{color:var(--alert);font-weight:700}
+.flag{font-family:inherit;font-size:.7rem;background:var(--alert);color:var(--card);border-radius:4px;padding:0 5px;margin-left:6px}
+.event{border-left:4px solid var(--mozo);background:var(--mozo-soft);border-radius:6px;padding:8px 10px;font-size:.93rem}
+.event.bad{border-left-color:var(--alert);background:var(--alert-soft)}
+.event .t{font-weight:700} .event .m{color:var(--muted);font-size:.88rem} .event .m.miss{color:var(--alert);font-weight:700}
+.daylbl{font-size:.85rem;color:var(--muted);margin:0 0 6px}
+.mem{margin:0;padding-left:18px;display:grid;gap:4px;font-size:.93rem}
+.controls{position:sticky;bottom:12px;margin-top:18px;display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(16,22,29,.12);z-index:5}
+.controls .caption{flex:1;min-width:0}
+.controls .count{font-size:.8rem;color:var(--muted)}
+.controls p{margin:2px 0 0;max-width:80ch}
+.btns{display:flex;gap:8px;flex-shrink:0}
+.story-top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+
+footer{margin-top:24px;border-top:1px solid var(--line)}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 24px;padding-top:18px;padding-bottom:28px;font-size:.88rem;color:var(--muted)}
+footer p{margin:0}
+footer a{color:inherit}
+
+@media (max-width:980px){
+  .story-grid{grid-template-columns:1fr}
+  .chat{height:auto;max-height:360px;min-height:220px}
+  .panels{grid-template-columns:1fr}
+  .controls{flex-direction:column;align-items:stretch}
+  .btns{justify-content:flex-end}
+}
+/* Narrow screens: short place names, sized so they stay >= 12px when the map is ~330px wide */
+@media (max-width:600px){
+  .map .plabel.long{display:none}
+  .map .plabel.short{display:inline;font-size:150px;stroke-width:26px}
+  /* the floating clock would cover the top-left places on a small map; dock it above instead */
+  .clock{position:static;display:flex;align-items:baseline;gap:10px;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:8px 14px}
+  .clock .t{font-size:1.15rem}
+}
+@media (prefers-reduced-motion: reduce){ .map .pulse.on{animation:none;opacity:.6} .map .tag{transition:none} }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="mark" href="index.html">HALO<span>Simulator</span></a>
+    <nav aria-label="Pages">
+      <a href="how-it-works.html" aria-current="page">How it works</a>
+      <a href="simulated-day.html">A simulated day</a>
+      <a href="experiment.html">Experiment</a>
+      <a href="about.html">About the model</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="pagehead">
+      <h1>How it works</h1>
+    </div>
+    <p class="illus" role="note"><b>Illustrative</b><span>Everything on this page is scripted for demonstration: the people, the neighborhood, the conversation, and the pipeline output are fictional. The stages match the real pipeline; the data does not come from any real person.</span></p>
+
+    <div class="story-top">
+      <p class="intro" style="margin:0">Step through one week with Margaret. Switch modes to see what happens when an assistant fills in defaults instead of asking.</p>
+      <div class="seg" role="group" aria-label="Assistant behavior">
+        <button id="sAsk" aria-pressed="true">Ask, don't assume</button>
+        <button id="sAssume" aria-pressed="false">Fill in defaults</button>
+      </div>
+    </div>
+    <div class="story-grid">
+      <section class="card chat" aria-label="Conversation">
+        <h2 id="sChatTitle">Conversation</h2>
+        <div class="feed" id="sFeed" aria-live="polite"></div>
+      </section>
+      <div>
+        <section class="card" aria-label="Map">
+          <div class="mapbox" id="sMap"><div class="clock"><div class="d" id="sDay"></div><div class="t" id="sTime"></div></div></div>
+          <div class="status" id="sStatus" role="status"><span class="dot"></span><span id="sStatusText"></span></div>
+        </section>
+        <div class="legend"><span><i class="sw zone"></i>Home geofence</span><span><i class="sw mozo"></i>Mobile Zone (MoZo)</span><span><i class="sw tag"></i>Halo Tag</span></div>
+        <div class="panels">
+          <section class="card"><h3>Synthetic Memory pipeline</h3><div class="body"><ol class="pipe" id="sPipe"></ol><div id="sJson"></div></div></section>
+          <section class="card"><h3>Google Calendar</h3><div class="body" id="sCal"></div></section>
+          <section class="card"><h3>Memory (SQLite)</h3><div class="body" id="sMem"></div></section>
+        </div>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="caption"><div class="count" id="sCount"></div><p id="sCaption"></p></div>
+      <div class="btns">
+        <button class="btn" id="sRestart">Restart</button>
+        <button class="btn" id="sBack">Back</button>
+        <button class="btn primary" id="sNext">Next</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>HALO research team, Missouri S&amp;T</p>
+    <p><a href="index.html">All pages</a> · Use the arrow keys to step through the walkthrough.</p>
+  </div>
+</footer>
+
+<script>
+// FUNCTION_START worldEngine — PROTECTED, baseline in .baseline/worldEngine.txt
+/* HALO simulation — world model
+ * A synthetic neighborhood: a 10 x 7 street grid with 400 m blocks.
+ * Everything is in meters. Routing uses Dijkstra with cheaper arterial roads.
+ */
+(function (root) {
+  var H = (root.HALO = root.HALO || {});
+
+  var SP = 400; // block spacing in meters
+  var NX = 10, NY = 7;
+  var ART_ROWS = [3], ART_COLS = [5]; // arterial roads (faster, preferred by routing)
+
+  function id(x, y) { return y * NX + x; }
+  function xy(n) { return [n % NX, Math.floor(n / NX)]; }
+  function pos(n) { return [(n % NX) * SP, Math.floor(n / NX) * SP]; }
+
+  function neighbors(n) {
+    var c = xy(n), x = c[0], y = c[1], out = [];
+    if (x > 0) out.push(id(x - 1, y));
+    if (x < NX - 1) out.push(id(x + 1, y));
+    if (y > 0) out.push(id(x, y - 1));
+    if (y < NY - 1) out.push(id(x, y + 1));
+    return out;
+  }
+  function isArterial(a, b) {
+    var A = xy(a), B = xy(b);
+    return (A[1] === B[1] && ART_ROWS.indexOf(A[1]) >= 0) || (A[0] === B[0] && ART_COLS.indexOf(A[0]) >= 0);
+  }
+  function edgeKey(a, b) { return a < b ? a + '-' + b : b + '-' + a; }
+  function manhattan(a, b) { var A = xy(a), B = xy(b); return Math.abs(A[0] - B[0]) + Math.abs(A[1] - B[1]); }
+
+  function dijkstra(a, b, costFn) {
+    var N = NX * NY, dist = [], prev = [], done = [], i;
+    for (i = 0; i < N; i++) { dist.push(Infinity); prev.push(-1); done.push(false); }
+    dist[a] = 0;
+    for (;;) {
+      var u = -1, best = Infinity;
+      for (i = 0; i < N; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i; }
+      if (u === -1 || u === b) break;
+      done[u] = true;
+      var nb = neighbors(u);
+      for (i = 0; i < nb.length; i++) {
+        var v = nb[i], c = dist[u] + costFn(u, v);
+        if (c < dist[v] - 1e-9) { dist[v] = c; prev[v] = u; }
+      }
+    }
+    var path = [];
+    for (var n = b; n !== -1; n = prev[n]) path.unshift(n);
+    return path;
+  }
+  function roadCost(u, v) { return isArterial(u, v) ? 0.6 : 1; }
+
+  /* ---------- polyline geometry ---------- */
+  function polyLength(poly) {
+    var L = 0;
+    for (var i = 1; i < poly.length; i++) L += Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]);
+    return L;
+  }
+  function pointAt(poly, d) {
+    if (d <= 0) return poly[0].slice();
+    for (var i = 1; i < poly.length; i++) {
+      var a = poly[i - 1], b = poly[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (d <= L) { var t = L ? d / L : 0; return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; }
+      d -= L;
+    }
+    return poly[poly.length - 1].slice();
+  }
+  function distToSeg(p, a, b) {
+    var dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+    var t = L2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+  }
+  function distToPoly(p, poly) {
+    if (poly.length === 1) return Math.hypot(p[0] - poly[0][0], p[1] - poly[0][1]);
+    var m = Infinity;
+    for (var i = 1; i < poly.length; i++) m = Math.min(m, distToSeg(p, poly[i - 1], poly[i]));
+    return m;
+  }
+  function dist(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1]); }
+
+  function makeRoute(nodes) {
+    var poly = nodes.map(pos);
+    return { nodes: nodes, poly: poly, length: polyLength(poly) };
+  }
+  var cache = {};
+  /** Fastest driving route (prefers arterials). */
+  function route(a, b) {
+    var k = 'r' + a + '>' + b;
+    return cache[k] || (cache[k] = makeRoute(dijkstra(a, b, roadCost)));
+  }
+  /** An alternative route that avoids the edges of the main route where possible. */
+  function detour(a, b) {
+    var k = 'd' + a + '>' + b;
+    if (cache[k]) return cache[k];
+    var main = route(a, b), used = {};
+    for (var i = 1; i < main.nodes.length; i++) used[edgeKey(main.nodes[i - 1], main.nodes[i])] = true;
+    return (cache[k] = makeRoute(dijkstra(a, b, function (u, v) { return roadCost(u, v) * (used[edgeKey(u, v)] ? 3 : 1); })));
+  }
+  /** Walking path: shortest by distance, ignores arterials. */
+  function walkPath(a, b) { return dijkstra(a, b, function () { return 1; }); }
+
+  var PLACES = [
+    { key: 'home',     name: 'Home',              short: 'Home',     node: id(2, 5) },
+    { key: 'clinic',   name: 'Riverside Clinic',  short: 'Clinic',   node: id(8, 1) },
+    { key: 'grocery',  name: 'Market St Grocery', short: 'Grocery',  node: id(6, 4) },
+    { key: 'church',   name: "St. Anne's Church", short: 'Church',   node: id(1, 1) },
+    { key: 'center',   name: 'Community Center',  short: 'Center',   node: id(5, 2) },
+    { key: 'pharmacy', name: 'Corner Pharmacy',   short: 'Pharmacy', node: id(3, 3) },
+    { key: 'friend',   name: "Martha's house",    short: 'Martha',   node: id(8, 5) },
+    { key: 'diner',    name: 'Elm St Diner',      short: 'Diner',    node: id(7, 3) },
+    { key: 'bank',     name: 'First Bank',        short: 'Bank',     node: id(4, 0) },
+    { key: 'park',     name: 'Oak Park',          short: 'Park',     node: id(0, 3) }
+  ];
+  PLACES.forEach(function (p) { p.pos = pos(p.node); });
+  function place(key) { for (var i = 0; i < PLACES.length; i++) if (PLACES[i].key === key) return PLACES[i]; return null; }
+
+  /* ---------- seeded randomness ---------- */
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function gauss(rng) {
+    var u = 0, v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  H.world = {
+    SP: SP, NX: NX, NY: NY, ART_ROWS: ART_ROWS, ART_COLS: ART_COLS,
+    id: id, xy: xy, pos: pos, neighbors: neighbors, manhattan: manhattan, isArterial: isArterial,
+    route: route, detour: detour, walkPath: walkPath, makeRoute: makeRoute,
+    polyLength: polyLength, pointAt: pointAt, distToPoly: distToPoly, dist: dist,
+    PLACES: PLACES, place: place
+  };
+  H.rng = { mulberry32: mulberry32, gauss: gauss };
+})(typeof window !== 'undefined' ? window : globalThis);
+// FUNCTION_END worldEngine
+</script>
+<script>
+/* HALO simulation — SVG map renderer
+ * canonical: makeMap() in how-it-works.html (from v2 js/map.js) — duplicated on simulated-day.html, keep in sync by hand.
+ * Not protected. Change from v2: each place gets a long and a short label so narrow screens stay legible.
+ */
+(function (root) {
+  var H = root.HALO, Wd = H.world, NS = 'http://www.w3.org/2000/svg';
+
+  function el(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function polyD(poly) { return 'M' + poly.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' L'); }
+
+  H.makeMap = function (container, opts) {
+    opts = opts || {};
+    var SP = Wd.SP, w = (Wd.NX - 1) * SP, h = (Wd.NY - 1) * SP;
+    var svg = el('svg', { viewBox: (-260) + ' ' + (-330) + ' ' + (w + 520) + ' ' + (h + 600), role: 'img', 'class': 'map' });
+    el('title', {}, svg).textContent = 'Map of a sample neighborhood with Margaret’s home, nearby places, and safe zones';
+
+    var ground = el('g', {}, svg);
+    el('rect', { x: -260, y: -330, width: w + 520, height: h + 600, 'class': 'ground' }, ground);
+    var x, y;
+    for (x = 0; x < Wd.NX - 1; x++) for (y = 0; y < Wd.NY - 1; y++) {
+      var park = x === 0 && y === 2;
+      el('rect', { x: x * SP + 50, y: y * SP + 50, width: SP - 100, height: SP - 100, rx: 28, 'class': park ? 'park' : 'block' }, ground);
+    }
+    for (y = 0; y < Wd.NY; y++) el('path', { d: 'M-120,' + y * SP + ' H' + (w + 120), 'class': 'street' + (Wd.ART_ROWS.indexOf(y) >= 0 ? ' arterial' : '') }, ground);
+    for (x = 0; x < Wd.NX; x++) el('path', { d: 'M' + x * SP + ',-120 V' + (h + 120), 'class': 'street' + (Wd.ART_COLS.indexOf(x) >= 0 ? ' arterial' : '') }, ground);
+
+    var gRoutine = el('g', { 'class': 'layer-routine' }, svg);
+    var gMozo = el('g', { 'class': 'layer-mozo' }, svg);
+    var hp = Wd.place('home').pos;
+    var homeZone = el('circle', { cx: hp[0], cy: hp[1], r: 150, 'class': 'homezone' }, svg);
+    var gPaths = el('g', { 'class': 'layer-paths' }, svg);
+    var gPlaces = el('g', { 'class': 'layer-places' }, svg);
+
+    Wd.PLACES.forEach(function (p) {
+      var g = el('g', { 'class': 'place' + (p.key === 'home' ? ' home' : '') }, gPlaces);
+      if (p.key === 'home') {
+        el('path', { d: 'M' + (p.pos[0] - 70) + ',' + (p.pos[1] + 10) + ' l70,-70 l70,70 v70 h-140 z', 'class': 'house' }, g);
+      } else {
+        el('circle', { cx: p.pos[0], cy: p.pos[1], r: 46, 'class': 'pin' }, g);
+      }
+      var ly = p.pos[1] - (p.key === 'home' ? 90 : 70);
+      el('text', { x: p.pos[0], y: ly, 'class': 'plabel long', 'text-anchor': 'middle' }, g).textContent = p.key === 'home' ? 'Home (Halo Anchor)' : p.name;
+      el('text', { x: p.pos[0], y: ly, 'class': 'plabel short', 'text-anchor': 'middle' }, g).textContent = p.short;
+    });
+
+    var trail = el('path', { 'class': 'trail', d: '' }, svg);
+    var fix = el('circle', { r: 26, 'class': 'fix', cx: hp[0], cy: hp[1] }, svg);
+    var pulse = el('circle', { r: 50, 'class': 'pulse', cx: hp[0], cy: hp[1] }, svg);
+    var tag = el('circle', { r: 46, 'class': 'tag', cx: hp[0], cy: hp[1] }, svg);
+    container.appendChild(svg);
+
+    function zones(group, list, cls) {
+      while (group.firstChild) group.removeChild(group.firstChild);
+      list.forEach(function (a) {
+        var g = el('g', { 'class': cls + (a.bad ? ' bad' : '') }, group);
+        el('path', { d: polyD(a.poly), 'stroke-width': 2 * a.W, 'class': 'corr' }, g);
+        el('circle', { cx: a.dest[0], cy: a.dest[1], r: a.W + 60, 'class': 'dest' }, g);
+      });
+    }
+
+    return {
+      svg: svg,
+      setHomeZone: function (r) { homeZone.setAttribute('r', r); },
+      setMozo: function (list) { zones(gMozo, list, 'mozo'); },
+      setRoutine: function (list) { zones(gRoutine, list, 'routine'); },
+      setPath: function (poly, cls) {
+        while (gPaths.firstChild) gPaths.removeChild(gPaths.firstChild);
+        if (poly) el('path', { d: polyD(poly), 'class': 'plan ' + (cls || '') }, gPaths);
+      },
+      setTrail: function (pts) { trail.setAttribute('d', pts && pts.length > 1 ? polyD(pts) : ''); },
+      setTag: function (p, state) {
+        tag.setAttribute('cx', p[0]); tag.setAttribute('cy', p[1]);
+        pulse.setAttribute('cx', p[0]); pulse.setAttribute('cy', p[1]);
+        tag.setAttribute('data-state', state || 'ok');
+        pulse.classList.toggle('on', state === 'alert');
+      },
+      setFix: function (p) {
+        if (!p) { fix.style.display = 'none'; return; }
+        fix.style.display = ''; fix.setAttribute('cx', p[0]); fix.setAttribute('cy', p[1]);
+      }
+    };
+  };
+})(window);
+</script>
+<script>
+/* HALO simulation — "How it works": a guided, scripted walkthrough
+ * canonical: this file (from v2 js/story.js). Not protected; only used here.
+ * Changes from v2: starts on DOMContentLoaded instead of from the v2 tab controller, owns its own
+ * arrow-key handling, and the last caption points to the Experiment page instead of a tab.
+ */
+(function (root) {
+  var H = root.HALO, Wd = H.world;
+
+  var STAGES = ['Parse transcript', 'Load memories', 'Fetch calendar context', 'Extract events (Gemini)', 'Ask for approval', 'Sync to Google Calendar', 'Write memory'];
+  var STATE_LABEL = { idle: '', running: 'Running', done: 'Done', waiting: 'Waiting for yes', skipped: 'Skipped' };
+
+  var M = function (t) { return { who: 'margaret', text: t }; };
+  var Hm = function (t) { return { who: 'halo', text: t }; };
+  var A = function (t) { return { who: 'assistant', text: t }; };
+
+  var base0 = { when: ['Monday', '10:12 AM'], tag: 'home', mozo: false, status: ['safe', 'Inside the home geofence'],
+    caption: "The Halo Anchor keeps a geofence around Margaret's home, and her Halo Tag reports that she's inside it. Leaving that circle normally triggers an alert." };
+
+  var STEPS = {
+    ask: [
+      base0,
+      { when: ['Monday', '10:14 AM'], chat: [M("Halo, I've got a doctor's appointment on Thursday.")],
+        caption: 'Margaret mentions an appointment. Halo knows what and which day, but not the time, the place, who is going, or how long it takes.' },
+      { chat: [Hm('Okay. What time on Thursday is it?'), M("Two o'clock.")], caption: 'Halo is missing the time, so it asks instead of guessing.' },
+      { chat: [Hm('Where is the appointment?'), M('Riverside Clinic.')], caption: 'MoZo needs a destination to build a route, so Halo asks where.' },
+      { chat: [Hm('Is anyone going with you, and about how long will it take?'), M("Sarah's driving me. Maybe an hour.")],
+        caption: 'Now Halo has all five fields it needs: what, when, where, who, and how long.' },
+      { when: ['Monday', '10:15 AM'], pipe: { run: [0, 1, 2, 3], set: { 4: 'waiting' } }, json: 'ask',
+        caption: "The transcript goes through the Synthetic Memory pipeline. Gemini reads it with Margaret's saved memories and calendar, and extracts a CREATE action with no missing fields." },
+      { chat: [{ who: 'halo', kind: 'proposal' }], next: 'Approve event',
+        caption: 'Halo reads the event back and waits. Nothing touches the calendar until Margaret says yes.' },
+      { chat: [M('Yes, save it.'), Hm('Saved. Sarah will see it on her calendar too.')], pipe: { run: [4, 5, 6] }, cal: 'ask',
+        mem: ['Sarah drives Margaret to appointments', "Margaret's doctor is at Riverside Clinic"],
+        caption: 'Approved. The event syncs to Google Calendar, and the pipeline saves what it learned so Halo does not need to ask next time.' },
+      { when: ['Thursday', '1:25 PM'], mozo: true, status: ['mozo', 'Safe zone extended to Riverside Clinic until 3:35 PM'],
+        caption: 'Shortly before the appointment, MoZo extends the safe zone: a corridor along the route, a zone around the clinic, and a time window padded for travel.' },
+      { when: ['Thursday', '1:48 PM'], tag: 'clinic', status: ['mozo', 'Away from home but inside the Mobile Zone. No alert.'],
+        caption: "Sarah drives Margaret to the clinic. She is outside the home geofence but inside MoZo, so nobody gets paged." },
+      { when: ['Thursday', '3:14 PM'], tag: 'home', mozo: false, status: ['safe', 'Back home. Mobile Zone closed.'],
+        caption: 'They are home before the window ends, and the zone shrinks back to the house.' },
+      { when: ['Thursday', '9:40 PM'], tag: 'park', status: ['alert', 'Alert sent to Sarah: Margaret left home at 9:40 PM with nothing scheduled'],
+        caption: 'Late that night Margaret walks toward Oak Park. Nothing is on the calendar, so HALO treats it as wandering and alerts Sarah. Because the afternoon trip caused no alarm, Sarah knows this one is real.' }
+    ],
+    assume: [
+      base0,
+      { when: ['Monday', '10:14 AM'], chat: [M("I've got a doctor's appointment on Thursday.")],
+        caption: 'Margaret makes the same request to a typical assistant that fills in missing details on its own.' },
+      { chat: [A('Done! I added \u201cDoctor\u2019s appointment\u201d to Thursday at 9:00 AM.')], pipe: { run: [0, 1, 2, 3, 5, 6], set: { 4: 'skipped' } }, json: 'assume', cal: 'assume',
+        caption: 'No questions. The assistant picked 9:00 AM and one hour by default, left the location blank, and saved without checking.' },
+      { when: ['Thursday', '8:30 AM'], status: ['safe', 'Inside the home geofence'],
+        caption: 'MoZo would open a window around 9:00 AM, but with no location there is no route to extend. Margaret is home all morning anyway.' },
+      { when: ['Thursday', '1:48 PM'], tag: 'clinic', status: ['alert', 'False alarm: Margaret left home with nothing scheduled'],
+        caption: 'The real appointment was at 2:00. As Sarah drives Margaret to the clinic, HALO sees an unscheduled exit and pages the family for a trip that was planned all along.' },
+      { when: ['Thursday', '3:14 PM'], tag: 'home', status: ['safe', 'Back inside the home geofence'],
+        caption: 'Sarah silences the alert and they come home. Each false alarm makes the next alert easier to dismiss.' },
+      { when: ['Thursday', '9:40 PM'], tag: 'park', status: ['alert', 'Alert sent to Sarah: Margaret left home at 9:40 PM'],
+        caption: "When Margaret really does wander that night, the alert looks exactly like the afternoon's false one. That is why HALO asks instead of assuming. The Experiment page measures this effect over months of simulated days." }
+    ]
+  };
+
+  var homeP = Wd.place('home'), clinic = Wd.place('clinic'), park = Wd.place('park');
+  var ROUTE = Wd.route(homeP.node, clinic.node).poly;
+  var WANDER = Wd.makeRoute(Wd.walkPath(homeP.node, park.node)).poly;
+  var POS = { home: homeP.pos, clinic: clinic.pos, park: park.pos };
+  var ZONE = { poly: ROUTE, dest: clinic.pos, W: 150 };
+
+  var mode = 'ask', idx = 0, token = 0, map;
+  var reduce = root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function $(id) { return document.getElementById(id); }
+  function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+  function stateAt(m, i) {
+    var s = { chat: [], pipe: STAGES.map(function () { return 'idle'; }), json: null, cal: null, mem: [], tag: 'home', mozo: false, status: null, when: null, caption: '' };
+    for (var k = 0; k <= i && k < STEPS[m].length; k++) {
+      var st = STEPS[m][k];
+      (st.chat || []).forEach(function (c) { var o = Object.assign({}, c); o.step = k; s.chat.push(o); });
+      if (st.pipe) {
+        st.pipe.run.forEach(function (n) { s.pipe[n] = 'done'; });
+        Object.keys(st.pipe.set || {}).forEach(function (n) { s.pipe[n] = st.pipe.set[n]; });
+      }
+      if (st.json) s.json = st.json;
+      if (st.cal) s.cal = st.cal;
+      if (st.mem) s.mem = s.mem.concat(st.mem);
+      if ('tag' in st) s.tag = st.tag;
+      if ('mozo' in st) s.mozo = st.mozo;
+      if (st.status) s.status = st.status;
+      if (st.when) s.when = st.when;
+      s.caption = st.caption;
+    }
+    return s;
+  }
+
+  function renderChat(s) {
+    var feed = $('sFeed');
+    if (!s.chat.length) { feed.innerHTML = '<p class="empty">Nobody has said anything yet. Press Next to start the conversation.</p>'; return; }
+    feed.innerHTML = s.chat.map(function (c) {
+      var name = c.who === 'margaret' ? 'Margaret' : c.who === 'halo' ? 'Halo' : 'Assistant';
+      if (c.kind === 'proposal') {
+        var live = c.step === idx;
+        return '<div class="msg halo"><div class="who">Halo</div><div class="bubble proposal">Here\u2019s what I\u2019ll add. Should I save it?' +
+          '<dl><dt>What</dt><dd>Doctor appointment</dd><dt>When</dt><dd>Thursday, 2:00\u20133:00 PM</dd><dt>Where</dt><dd>Riverside Clinic</dd><dt>Who</dt><dd>Margaret and Sarah</dd></dl>' +
+          (live ? '<button class="approve" id="sInlineApprove">Approve event</button>' : '<div class="approved">Approved by Margaret</div>') + '</div></div>';
+      }
+      return '<div class="msg ' + c.who + '"><div class="who">' + name + '</div><div class="bubble">' + esc(c.text) + '</div></div>';
+    }).join('');
+    var b = $('sInlineApprove'); if (b) b.addEventListener('click', next);
+    feed.scrollTop = feed.scrollHeight;
+  }
+  function renderPipe(arr) {
+    $('sPipe').innerHTML = arr.map(function (st, i) {
+      return '<li data-s="' + st + '"><span class="n">' + (i + 1) + '</span><span class="lbl">' + STAGES[i] + '</span><span class="st">' + STATE_LABEL[st] + '</span></li>';
+    }).join('');
+  }
+  function renderJson(kind) {
+    var el = $('sJson');
+    if (!kind) { el.innerHTML = ''; return; }
+    var rows = kind === 'ask' ? [
+      ['action', '"CREATE"'], ['title', '"Doctor appointment"'], ['start', '"Thu 14:00"'], ['end', '"Thu 15:00"'],
+      ['location', '"Riverside Clinic"'], ['attendees', '["Margaret", "Sarah"]'], ['missing_fields', '[]']
+    ] : [
+      ['action', '"CREATE"'], ['title', '"Doctor\'s appointment"'], ['start', '"Thu 09:00"', 'assumed'], ['end', '"Thu 10:00"', 'assumed'],
+      ['location', 'null', 'missing'], ['attendees', '["Margaret"]']
+    ];
+    el.innerHTML = '<pre class="json">{\n' + rows.map(function (r, i) {
+      return '  <span class="k">"' + r[0] + '"</span>: ' + (r[2] ? '<span class="bad">' + esc(r[1]) + '</span>' : esc(r[1])) +
+        (i < rows.length - 1 ? ',' : '') + (r[2] ? '<span class="flag">' + r[2] + '</span>' : '');
+    }).join('\n') + '\n}</pre>';
+  }
+  function renderCal(kind) {
+    var el = $('sCal');
+    if (!kind) { el.innerHTML = '<p class="daylbl">Thursday</p><p class="empty">Nothing scheduled.</p>'; return; }
+    el.innerHTML = kind === 'ask'
+      ? '<p class="daylbl">Thursday</p><div class="event"><div class="t">2:00 \u2013 3:00 PM</div><div>Doctor appointment</div><div class="m">Riverside Clinic</div><div class="m">With Sarah</div></div>'
+      : '<p class="daylbl">Thursday</p><div class="event bad"><div class="t">9:00 \u2013 10:00 AM</div><div>Doctor\'s appointment</div><div class="m miss">No location</div></div>';
+  }
+  function renderMem(list) {
+    $('sMem').innerHTML = list.length ? '<ul class="mem">' + list.map(function (f) { return '<li>' + esc(f) + '</li>'; }).join('') + '</ul>'
+      : '<p class="empty">No memories saved from this conversation.</p>';
+  }
+  function renderStatus(st) {
+    $('sStatus').className = 'status ' + st[0];
+    $('sStatusText').textContent = st[1];
+  }
+  function tagState(st) { return st[0] === 'alert' ? 'alert' : st[0] === 'mozo' ? 'mozo' : 'ok'; }
+
+  function moveTag(from, to, my, done) {
+    var key = from + '>' + to, poly = null, rev = false;
+    if (key === 'home>clinic') poly = ROUTE;
+    else if (key === 'clinic>home') { poly = ROUTE; rev = true; }
+    else if (key === 'home>park') poly = WANDER;
+    if (!poly || reduce) { map.setTag(POS[to]); done(); return; }
+    var len = Wd.polyLength(poly), dur = 1800, t0 = null;
+    map.setTag(rev ? poly[poly.length - 1] : poly[0], 'moving');
+    function frame(ts) {
+      if (my !== token) return;
+      if (!t0) t0 = ts;
+      var k = Math.min(1, (ts - t0) / dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      map.setTag(Wd.pointAt(poly, (rev ? 1 - e : e) * len), 'moving');
+      if (k < 1) requestAnimationFrame(frame); else done();
+    }
+    requestAnimationFrame(frame);
+  }
+  function animatePipe(start, step, my, done) {
+    var arr = start.slice(), run = step.pipe.run, i = 0, delay = reduce ? 0 : 360;
+    renderPipe(arr);
+    (function tick() {
+      if (my !== token) return;
+      if (i > 0) arr[run[i - 1]] = 'done';
+      if (i < run.length) { arr[run[i]] = 'running'; renderPipe(arr); i++; setTimeout(tick, delay); }
+      else { Object.keys(step.pipe.set || {}).forEach(function (n) { arr[n] = step.pipe.set[n]; }); renderPipe(arr); done(); }
+    })();
+  }
+
+  function render(forward) {
+    var my = ++token, steps = STEPS[mode], s = stateAt(mode, idx), step = steps[idx];
+    var prev = forward && idx > 0 ? stateAt(mode, idx - 1) : null;
+    $('sChatTitle').innerHTML = mode === 'ask' ? 'Conversation <small>Halo voice assistant</small>' : 'Conversation <small>typical assistant</small>';
+    renderChat(s);
+    $('sDay').textContent = s.when[0]; $('sTime').textContent = s.when[1];
+    $('sCaption').textContent = s.caption;
+    $('sCount').textContent = 'Step ' + (idx + 1) + ' of ' + steps.length;
+    map.setMozo(s.mozo ? [ZONE] : []);
+
+    var rest = function () { if (my === token) { renderJson(s.json); renderCal(s.cal); renderMem(s.mem); } };
+    if (prev && step.pipe) { renderJson(prev.json); renderCal(prev.cal); renderMem(prev.mem); animatePipe(prev.pipe, step, my, rest); }
+    else { renderPipe(s.pipe); rest(); }
+
+    if (prev && prev.tag !== s.tag) {
+      renderStatus(prev.status);
+      moveTag(prev.tag, s.tag, my, function () { if (my === token) { map.setTag(POS[s.tag], tagState(s.status)); renderStatus(s.status); } });
+    } else { map.setTag(POS[s.tag], tagState(s.status)); renderStatus(s.status); }
+
+    $('sBack').disabled = idx === 0;
+    var nb = $('sNext'), last = idx === steps.length - 1;
+    nb.disabled = last;
+    nb.textContent = last ? 'End of story' : (step.next || 'Next');
+    nb.classList.toggle('blue', !!step.next);
+  }
+  function next() { if (idx < STEPS[mode].length - 1) { idx++; render(true); } }
+  function back() { if (idx > 0) { idx--; render(false); } }
+  function setMode(m) {
+    mode = m; idx = 0;
+    $('sAsk').setAttribute('aria-pressed', m === 'ask');
+    $('sAssume').setAttribute('aria-pressed', m === 'assume');
+    render(false);
+  }
+
+  H.story = {
+    init: function () {
+      map = H.makeMap($('sMap'));
+      $('sNext').addEventListener('click', next);
+      $('sBack').addEventListener('click', back);
+      $('sRestart').addEventListener('click', function () { idx = 0; render(false); });
+      $('sAsk').addEventListener('click', function () { setMode('ask'); });
+      $('sAssume').addEventListener('click', function () { setMode('assume'); });
+      render(false);
+    },
+    key: function (e) { if (e.key === 'ArrowRight') next(); if (e.key === 'ArrowLeft') back(); }
+  };
+
+  // canonical: keydown filter from v2 js/main.js — arrows step the story unless focus is in a form control
+  document.addEventListener('DOMContentLoaded', function () {
+    H.story.init();
+    document.addEventListener('keydown', function (e) {
+      var tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+      H.story.key(e);
+    });
+  });
+})(window);
+</script>
+</body>
+</html>
