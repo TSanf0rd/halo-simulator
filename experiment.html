@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Experiment · HALO Simulator</title>
+<meta name="description" content="Batch runs of the HALO simulation: four detectors on the same synthetic days, with 95% intervals, ask-vs-assume and approval-gate comparisons, and a corridor-width sweep.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+/* Design tokens — canonical: index.html (taken unchanged from v2 css/style.css). Keep in sync by hand.
+ * Color carries meaning: teal = home geofence, indigo = MoZo, ochre = learned routine, crimson = alert.
+ */
+:root{
+  --bg:#F3F6F7; --card:#FFFFFF; --paper:#E6ECEE; --street:#FFFFFF; --park:#CFE3D2; --block:#D6DEE3;
+  --ink:#1C2A39; --muted:#566676; --line:#D2DADF;
+  --zone:#23877B; --zone-soft:#E1F1EE;
+  --mozo:#4F63C9; --mozo-soft:#E8EBFA;
+  --routine:#A0731F; --routine-soft:#F6EEDC;
+  --alert:#C8324A; --alert-soft:#FBE7EA;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10161D; --card:#18212B; --paper:#1A242E; --street:#2A3743; --park:#1F3528; --block:#212C37;
+    --ink:#E5ECF1; --muted:#98A7B4; --line:#2B3946;
+    --zone:#4CB6A8; --zone-soft:#17322E;
+    --mozo:#8C9BF2; --mozo-soft:#232A4A;
+    --routine:#D9A441; --routine-soft:#3A2F17;
+    --alert:#F2687E; --alert-soft:#3A1E25;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10161D; --card:#18212B; --paper:#1A242E; --street:#2A3743; --park:#1F3528; --block:#212C37;
+  --ink:#E5ECF1; --muted:#98A7B4; --line:#2B3946;
+  --zone:#4CB6A8; --zone-soft:#17322E;
+  --mozo:#8C9BF2; --mozo-soft:#232A4A;
+  --routine:#D9A441; --routine-soft:#3A2F17;
+  --alert:#F2687E; --alert-soft:#3A1E25;
+}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.5}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--mozo);outline-offset:2px}
+[hidden]{display:none !important}
+
+.wrap{max-width:1240px;margin:0 auto;padding:0 20px}
+/* ---------- masthead (canonical: index.html) ---------- */
+.top{background:var(--card);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;padding-top:14px;padding-bottom:14px}
+.mark{font-weight:700;letter-spacing:.14em;font-size:.9rem;color:inherit;text-decoration:none}
+.mark span{color:var(--muted);font-weight:400;letter-spacing:.02em;margin-left:8px}
+.top nav{display:flex;flex-wrap:wrap;gap:4px 18px}
+.top nav a{color:var(--muted);font-size:.9rem;text-decoration:none}
+.top nav a:hover{color:var(--ink);text-decoration:underline}
+.top nav a[aria-current="page"]{color:var(--ink);font-weight:700}
+
+/* ---------- page head + illustrative label (canonical: how-it-works.html) ---------- */
+.pagehead{padding:28px 0 6px}
+.pagehead h1{margin:0;font-size:clamp(1.5rem,2.6vw,2rem);line-height:1.15;letter-spacing:-0.01em}
+.illus{display:flex;gap:10px;align-items:flex-start;margin:14px 0 18px;padding:10px 14px;border:1px dashed var(--muted);border-radius:10px;background:var(--card);font-size:.92rem;color:var(--muted);max-width:90ch}
+.illus b{color:var(--ink);flex-shrink:0;font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;padding-top:2px}
+/* settings line (canonical: simulated-day.html) */
+.settings{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin:0 0 14px;font-size:.9rem;color:var(--muted)}
+.settings b{color:var(--ink)}
+.settings .warn{color:var(--alert);font-weight:700}
+.settings a{color:var(--ink)}
+
+/* ---------- shared components (canonical: v2 css/style.css) ---------- */
+main .wrap{padding-bottom:40px}
+.intro{color:var(--muted);max-width:75ch;margin:0 0 16px}
+.intro strong{color:var(--ink)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.card > h2,.card > h3{font-size:1rem;margin:0;padding:12px 16px;border-bottom:1px solid var(--line)}
+.body{padding:12px 16px 14px}
+.btn{border:1px solid var(--line);background:var(--card);padding:8px 14px;border-radius:9px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--ink);color:var(--card);border-color:var(--ink);font-weight:700}
+.btn:disabled{opacity:.4;cursor:default}
+a.btn{display:inline-block;color:var(--ink);text-decoration:none}
+.busy{color:var(--muted);font-style:italic}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--card)}
+.seg button{border:0;background:transparent;padding:6px 14px;border-radius:999px;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--card);font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.85rem;color:var(--muted);margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;display:inline-block}
+
+/* ---------- experiment (canonical: v2 css/style.css) ---------- */
+.exp-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:18px;align-items:start}
+.params{display:grid;gap:14px}
+.params .grp{display:grid;gap:10px}
+.params .grp-t{font-weight:700;font-size:.92rem;margin:4px 0 0}
+.field{display:grid;gap:3px}
+.field label{display:flex;justify-content:space-between;gap:10px;font-size:.9rem}
+.field label output{font-weight:700;font-variant-numeric:tabular-nums}
+.field input[type=range]{width:100%;accent-color:var(--mozo)}
+.field .help{font-size:.8rem;color:var(--muted)}
+.runrow{display:flex;flex-wrap:wrap;gap:8px}
+.charts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.chart svg{display:block;width:100%;height:auto}
+.chart .body p{margin:0 0 6px;font-size:.85rem;color:var(--muted)}
+.c-axis{stroke:var(--line)} .c-lbl{font-size:11px;fill:var(--muted)} .c-val{font-size:12px;font-weight:700;fill:var(--ink)}
+.c-whisk{stroke:var(--ink);stroke-width:1.5}
+.results-note{font-size:.88rem;color:var(--muted);margin:12px 0 0}
+table.tbl{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums}
+.tbl th,.tbl td{text-align:right;padding:7px 8px;border-bottom:1px solid var(--line)}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl th{color:var(--muted);font-weight:400}
+.tblwrap{overflow-x:auto}
+.takeaway{margin:0;padding:12px 14px;border-radius:10px;background:var(--mozo-soft);font-size:.95rem}
+
+footer{margin-top:24px;border-top:1px solid var(--line)}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 24px;padding-top:18px;padding-bottom:28px;font-size:.88rem;color:var(--muted)}
+footer p{margin:0}
+footer a{color:inherit}
+
+/* minmax(0,…) lets the results table scroll inside its card instead of widening the page on phones */
+.exp-grid > *{min-width:0}
+.exp-grid > div{grid-template-columns:minmax(0,1fr)}
+@media (max-width:980px){
+  .exp-grid{grid-template-columns:1fr}
+  .charts{grid-template-columns:minmax(0,1fr)}
+}
+/* Narrow screens: chart text stays >= 12px. Bar charts draw 300 units wide, the sweep's line charts 420,
+ * so each gets its own size; the line charts' y-axis labels may run a few px into the card's padding. */
+@media (max-width:600px){
+  #eCharts .c-lbl{font-size:12px}
+  #eExtra .c-lbl{font-size:17px}
+  #eExtra .c-lbl[text-anchor="middle"]{transform:translateY(8px)} /* x-axis labels clear the lowest y-axis label */
+  #eExtra svg{overflow:visible}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="mark" href="index.html">HALO<span>Simulator</span></a>
+    <nav aria-label="Pages">
+      <a href="how-it-works.html">How it works</a>
+      <a href="simulated-day.html">A simulated day</a>
+      <a href="experiment.html" aria-current="page">Experiment</a>
+      <a href="about.html">About the model</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="pagehead">
+      <h1>Experiment</h1>
+    </div>
+    <p class="illus" role="note"><b>Illustrative</b><span>Synthetic data. Every number on this page comes from a seeded model with assumed parameters. It shows how the design behaves, not clinical performance, and nothing here describes a real person.</span></p>
+
+    <p class="settings" id="eSettings" aria-live="polite"></p>
+    <p class="intro">Simulate months of days and compare four ways of deciding when to alert. Every detector sees exactly the same days, so the differences come from the detectors, not luck. Results are from a synthetic model with assumed parameters; they show how the design behaves, not clinical performance.</p>
+    <div class="exp-grid">
+      <section class="card"><h3>Settings</h3><div class="body params" id="eParams"></div></section>
+      <div style="display:grid;gap:14px">
+        <div class="runrow">
+          <button class="btn primary" id="eRun">Run experiment</button>
+          <button class="btn" id="eCompare">Compare: ask vs. fill in defaults</button>
+          <button class="btn" id="eGate">Compare: approval gate on vs. off</button>
+          <button class="btn" id="eSweep">Sweep corridor width</button>
+          <button class="btn" id="eReset">Reset settings</button>
+          <a class="btn" id="eWatch" href="simulated-day.html">Watch a day from this run</a>
+        </div>
+        <p class="busy" id="eBusy">Simulating…</p>
+        <p class="takeaway" id="eTake"></p>
+        <div class="charts" id="eCharts"></div>
+        <section class="card"><h3>Results table</h3><div class="body tblwrap" id="eTable"></div></section>
+        <section class="card" id="eExtraCard" hidden><h3 id="eExtraTitle"></h3><div class="body" id="eExtra"></div></section>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>HALO research team, Missouri S&amp;T</p>
+    <p><a href="index.html">All pages</a> · Settings travel to the simulated day in the link, so the same run regenerates the same days.</p>
+  </div>
+</footer>
+
+<script>
+// FUNCTION_START worldEngine — PROTECTED, baseline in .baseline/worldEngine.txt
+/* HALO simulation — world model
+ * A synthetic neighborhood: a 10 x 7 street grid with 400 m blocks.
+ * Everything is in meters. Routing uses Dijkstra with cheaper arterial roads.
+ */
+(function (root) {
+  var H = (root.HALO = root.HALO || {});
+
+  var SP = 400; // block spacing in meters
+  var NX = 10, NY = 7;
+  var ART_ROWS = [3], ART_COLS = [5]; // arterial roads (faster, preferred by routing)
+
+  function id(x, y) { return y * NX + x; }
+  function xy(n) { return [n % NX, Math.floor(n / NX)]; }
+  function pos(n) { return [(n % NX) * SP, Math.floor(n / NX) * SP]; }
+
+  function neighbors(n) {
+    var c = xy(n), x = c[0], y = c[1], out = [];
+    if (x > 0) out.push(id(x - 1, y));
+    if (x < NX - 1) out.push(id(x + 1, y));
+    if (y > 0) out.push(id(x, y - 1));
+    if (y < NY - 1) out.push(id(x, y + 1));
+    return out;
+  }
+  function isArterial(a, b) {
+    var A = xy(a), B = xy(b);
+    return (A[1] === B[1] && ART_ROWS.indexOf(A[1]) >= 0) || (A[0] === B[0] && ART_COLS.indexOf(A[0]) >= 0);
+  }
+  function edgeKey(a, b) { return a < b ? a + '-' + b : b + '-' + a; }
+  function manhattan(a, b) { var A = xy(a), B = xy(b); return Math.abs(A[0] - B[0]) + Math.abs(A[1] - B[1]); }
+
+  function dijkstra(a, b, costFn) {
+    var N = NX * NY, dist = [], prev = [], done = [], i;
+    for (i = 0; i < N; i++) { dist.push(Infinity); prev.push(-1); done.push(false); }
+    dist[a] = 0;
+    for (;;) {
+      var u = -1, best = Infinity;
+      for (i = 0; i < N; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i; }
+      if (u === -1 || u === b) break;
+      done[u] = true;
+      var nb = neighbors(u);
+      for (i = 0; i < nb.length; i++) {
+        var v = nb[i], c = dist[u] + costFn(u, v);
+        if (c < dist[v] - 1e-9) { dist[v] = c; prev[v] = u; }
+      }
+    }
+    var path = [];
+    for (var n = b; n !== -1; n = prev[n]) path.unshift(n);
+    return path;
+  }
+  function roadCost(u, v) { return isArterial(u, v) ? 0.6 : 1; }
+
+  /* ---------- polyline geometry ---------- */
+  function polyLength(poly) {
+    var L = 0;
+    for (var i = 1; i < poly.length; i++) L += Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]);
+    return L;
+  }
+  function pointAt(poly, d) {
+    if (d <= 0) return poly[0].slice();
+    for (var i = 1; i < poly.length; i++) {
+      var a = poly[i - 1], b = poly[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (d <= L) { var t = L ? d / L : 0; return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; }
+      d -= L;
+    }
+    return poly[poly.length - 1].slice();
+  }
+  function distToSeg(p, a, b) {
+    var dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+    var t = L2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+  }
+  function distToPoly(p, poly) {
+    if (poly.length === 1) return Math.hypot(p[0] - poly[0][0], p[1] - poly[0][1]);
+    var m = Infinity;
+    for (var i = 1; i < poly.length; i++) m = Math.min(m, distToSeg(p, poly[i - 1], poly[i]));
+    return m;
+  }
+  function dist(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1]); }
+
+  function makeRoute(nodes) {
+    var poly = nodes.map(pos);
+    return { nodes: nodes, poly: poly, length: polyLength(poly) };
+  }
+  var cache = {};
+  /** Fastest driving route (prefers arterials). */
+  function route(a, b) {
+    var k = 'r' + a + '>' + b;
+    return cache[k] || (cache[k] = makeRoute(dijkstra(a, b, roadCost)));
+  }
+  /** An alternative route that avoids the edges of the main route where possible. */
+  function detour(a, b) {
+    var k = 'd' + a + '>' + b;
+    if (cache[k]) return cache[k];
+    var main = route(a, b), used = {};
+    for (var i = 1; i < main.nodes.length; i++) used[edgeKey(main.nodes[i - 1], main.nodes[i])] = true;
+    return (cache[k] = makeRoute(dijkstra(a, b, function (u, v) { return roadCost(u, v) * (used[edgeKey(u, v)] ? 3 : 1); })));
+  }
+  /** Walking path: shortest by distance, ignores arterials. */
+  function walkPath(a, b) { return dijkstra(a, b, function () { return 1; }); }
+
+  var PLACES = [
+    { key: 'home',     name: 'Home',              short: 'Home',     node: id(2, 5) },
+    { key: 'clinic',   name: 'Riverside Clinic',  short: 'Clinic',   node: id(8, 1) },
+    { key: 'grocery',  name: 'Market St Grocery', short: 'Grocery',  node: id(6, 4) },
+    { key: 'church',   name: "St. Anne's Church", short: 'Church',   node: id(1, 1) },
+    { key: 'center',   name: 'Community Center',  short: 'Center',   node: id(5, 2) },
+    { key: 'pharmacy', name: 'Corner Pharmacy',   short: 'Pharmacy', node: id(3, 3) },
+    { key: 'friend',   name: "Martha's house",    short: 'Martha',   node: id(8, 5) },
+    { key: 'diner',    name: 'Elm St Diner',      short: 'Diner',    node: id(7, 3) },
+    { key: 'bank',     name: 'First Bank',        short: 'Bank',     node: id(4, 0) },
+    { key: 'park',     name: 'Oak Park',          short: 'Park',     node: id(0, 3) }
+  ];
+  PLACES.forEach(function (p) { p.pos = pos(p.node); });
+  function place(key) { for (var i = 0; i < PLACES.length; i++) if (PLACES[i].key === key) return PLACES[i]; return null; }
+
+  /* ---------- seeded randomness ---------- */
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function gauss(rng) {
+    var u = 0, v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  H.world = {
+    SP: SP, NX: NX, NY: NY, ART_ROWS: ART_ROWS, ART_COLS: ART_COLS,
+    id: id, xy: xy, pos: pos, neighbors: neighbors, manhattan: manhattan, isArterial: isArterial,
+    route: route, detour: detour, walkPath: walkPath, makeRoute: makeRoute,
+    polyLength: polyLength, pointAt: pointAt, distToPoly: distToPoly, dist: dist,
+    PLACES: PLACES, place: place
+  };
+  H.rng = { mulberry32: mulberry32, gauss: gauss };
+})(typeof window !== 'undefined' ? window : globalThis);
+// FUNCTION_END worldEngine
+</script>
+<script>
+// FUNCTION_START simEngine — PROTECTED, baseline in .baseline/simEngine.txt
+/* HALO simulation — engine
+ * Generates synthetic days (outings, wandering, calendar events), simulates GPS,
+ * runs four detectors side by side, and scores them.
+ *
+ * Detectors
+ *   static   : alert whenever the tag leaves the home geofence
+ *   routine  : home geofence + allowances learned from 4 weeks of location history
+ *              (a stand-in for commercial "learned routine" products)
+ *   mozo     : home geofence + Mobile Zones built from confirmed calendar events
+ *   hybrid   : mozo OR routine
+ */
+(function (root) {
+  var H = root.HALO, Wd = H.world, R = H.rng;
+  var DAY = 1440, DRIVE = 450, WALK = 55; // meters per minute
+  var DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var DETECTORS = [
+    { key: 'static',  name: 'Static geofence' },
+    { key: 'routine', name: 'Learned routine' },
+    { key: 'mozo',    name: 'MoZo' },
+    { key: 'hybrid',  name: 'MoZo + routine' }
+  ];
+
+  /* Weekly habits (dow: 0 = Sunday). Each happens with 85% probability. */
+  var HABITS = [
+    { place: 'church',   dow: 0, start: 540, dur: 90 },
+    { place: 'pharmacy', dow: 1, start: 900, dur: 20 },
+    { place: 'grocery',  dow: 2, start: 600, dur: 45 },
+    { place: 'center',   dow: 4, start: 780, dur: 120 },
+    { place: 'grocery',  dow: 6, start: 630, dur: 45 }
+  ];
+  var IRREGULAR = ['clinic', 'friend', 'diner', 'bank'];
+
+  var DEFAULTS = {
+    seed: 2026,
+    days: 168,             // 24 weeks
+    assistant: 'ask',      // 'ask' | 'assume'
+    gate: true,            // caregiver approval for new events
+    W: 150,                // corridor half-width (m)
+    buf: 20,               // time buffer around events (min)
+    R: 150,                // home geofence radius (m)
+    sigma: 15,             // GPS noise, 1 s.d. (m)
+    dropout: 0.03,         // probability a GPS fix is missing
+    detour: 0.15,          // probability a trip uses an alternative route
+    errand: 0.25,          // probability of a quick stop just off the route
+    venueWander: 0.05,     // probability she walks away from a venue during an outing
+    wanderPerWeek: 2,
+    spuriousPerWeek: 1,    // hallucinated or injected events reaching the pipeline
+    captureHabit: 0.6,     // share of habitual outings mentioned in conversation
+    captureIrregular: 0.95,// share of one-off outings mentioned in conversation
+    pComplete: 0.55,       // share of mentions that already contain every field
+    extractErr: 0.07,      // LLM extraction error rate (≈ 1 − validation F1)
+    readbackCatch: 0.8,    // share of wrong events caught when Halo reads them back
+    gateCatch: 0.95        // share of spurious events rejected by the caregiver
+  };
+
+  function P(key) { return Wd.place(key); }
+  function home() { return P('home'); }
+  function uni(rng, a, b) { return a + rng() * (b - a); }
+  function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
+  function poisson(rng, lam) { var L = Math.exp(-lam), k = 0, p = 1; do { k++; p *= rng(); } while (p > L); return k - 1; }
+  function clampDay(m) { return Math.max(0, Math.min(DAY - 1, m)); }
+  function dowOf(d) { return ((d % 7) + 7) % 7; }
+  function fmtTime(m) {
+    m = ((Math.round(m) % DAY) + DAY) % DAY;
+    var h = Math.floor(m / 60), mm = m % 60, ap = h < 12 ? 'AM' : 'PM', h12 = h % 12 || 12;
+    return h12 + ':' + (mm < 10 ? '0' : '') + mm + ' ' + ap;
+  }
+
+  /* ---------- outings ---------- */
+  function planOutings(rng, d) {
+    var dow = dowOf(d), outs = [];
+    HABITS.forEach(function (h) {
+      if (h.dow === dow && rng() < 0.85)
+        outs.push({ place: h.place, kind: 'habit', start: Math.round(h.start + R.gauss(rng) * 10), dur: h.dur });
+    });
+    if (rng() < 0.3) {
+      var o = { place: pick(rng, IRREGULAR), kind: 'irregular', start: 540 + 15 * Math.floor(rng() * 33), dur: 15 * Math.round(uni(rng, 3, 8)) };
+      if (!outs.some(function (x) { return Math.abs(x.start - o.start) < 240; })) outs.push(o);
+    }
+    return outs;
+  }
+  /* Per-minute positions from a list of legs: {move: poly} or {stay: pos, n: minutes}. */
+  function legsTrack(legs, speed) {
+    var out = [];
+    legs.forEach(function (leg) {
+      if (leg.stay) { for (var i = 0; i < leg.n; i++) out.push(leg.stay); return; }
+      var L = Wd.polyLength(leg.move), n = Math.ceil(L / speed);
+      for (var j = 0; j < n; j++) out.push(Wd.pointAt(leg.move, j * speed));
+    });
+    return out;
+  }
+  function splitPoly(poly, d) {
+    var pre = [poly[0]], acc = 0, i;
+    for (i = 1; i < poly.length; i++) {
+      var L = Wd.dist(poly[i - 1], poly[i]);
+      if (acc + L >= d) break;
+      acc += L; pre.push(poly[i]);
+    }
+    var cut = Wd.pointAt(poly, d);
+    pre.push(cut);
+    return { pre: pre, post: [cut].concat(poly.slice(i)), cut: cut };
+  }
+  function buildOuting(rng, o, p) {
+    var h = home().node, dest = P(o.place), L, ang, off;
+    o.detour = rng() < p.detour;
+    o.route = o.detour ? Wd.detour(h, dest.node) : Wd.route(h, dest.node);
+    L = o.route.length;
+    ang = rng() * 2 * Math.PI; off = uni(rng, 20, 150); // parking lot / entrance is not exactly on the street corner
+    o.stayPos = [dest.pos[0] + Math.cos(ang) * off, dest.pos[1] + Math.sin(ang) * off];
+    var legs = [];
+    o.errand = rng() < p.errand && L > 800;
+    if (o.errand) { // quick stop just off the route (gas station, drive-through)
+      var sp = splitPoly(o.route.poly, uni(rng, 0.3, 0.7) * L), c = sp.cut;
+      var nxt = Wd.pointAt(o.route.poly, Math.min(L, Wd.polyLength(sp.pre) + 5));
+      var dx = nxt[0] - c[0], dy = nxt[1] - c[1], n = Math.hypot(dx, dy) || 1, sgn = rng() < 0.5 ? -1 : 1, so = uni(rng, 150, 320);
+      o.errandPos = [c[0] - dy / n * so * sgn, c[1] + dx / n * so * sgn];
+      legs.push({ move: sp.pre }, { move: [c, o.errandPos] }, { stay: o.errandPos, n: Math.round(uni(rng, 3, 8)) }, { move: [o.errandPos, c] }, { move: sp.post });
+    } else legs.push({ move: o.route.poly });
+    legs.push({ move: [dest.pos, o.stayPos] });
+    o.outTrack = legsTrack(legs, DRIVE);
+    o.backTrack = legsTrack([{ move: [o.stayPos, dest.pos] }, { move: o.route.poly.slice().reverse() }], DRIVE);
+    o.travel = Math.ceil(L / DRIVE);
+    o.depart = o.start - o.outTrack.length - Math.round(uni(rng, 3, 12));
+    o.arrive = o.depart + o.outTrack.length;
+    o.actualEnd = o.start + o.dur + Math.round(uni(rng, -5, 25));
+    o.back = o.actualEnd + o.backTrack.length;
+    return o;
+  }
+
+  /* ---------- wandering ---------- */
+  var PATTERNS = ['direct', 'random', 'lapping', 'pacing'];
+  function wanderStart(rng) {
+    var u = rng();
+    if (u < 0.25) return rng() < 0.6 ? Math.round(uni(rng, 1260, 1380)) : Math.round(uni(rng, 0, 150)); // night
+    if (u < 0.6) return Math.round(uni(rng, 900, 1140));  // late afternoon ("sundowning")
+    return Math.round(uni(rng, 480, 900));                 // daytime
+  }
+  function extendRandom(rng, seq, n) {
+    for (var i = 0; i < n; i++) {
+      var cur = seq[seq.length - 1], prev = seq[seq.length - 2];
+      var nb = Wd.neighbors(cur).filter(function (x) { return x !== prev; });
+      seq.push(pick(rng, nb));
+    }
+    return seq;
+  }
+  function wanderNodes(rng, pattern) {
+    var h = home().node, c = Wd.xy(h), hx = c[0], hy = c[1], seq = [h], i;
+    if (pattern === 'direct') {
+      var t; do { t = Math.floor(rng() * Wd.NX * Wd.NY); } while (Wd.manhattan(t, h) < 4);
+      seq = extendRandom(rng, Wd.walkPath(h, t), 10);
+    } else if (pattern === 'random') {
+      seq = extendRandom(rng, seq, 18);
+    } else if (pattern === 'lapping') {
+      for (i = 0; i < 6; i++) seq.push(Wd.id(hx + 1, hy), Wd.id(hx + 1, hy - 1), Wd.id(hx, hy - 1), h);
+    } else { // pacing
+      for (i = 0; i < 8; i++) seq.push(Wd.id(hx + 2, hy), h);
+    }
+    return seq;
+  }
+  function planWanders(rng, outs, p) {
+    var n = poisson(rng, p.wanderPerWeek / 7), list = [];
+    for (var k = 0; k < n; k++) {
+      for (var tries = 0; tries < 12; tries++) {
+        var start = wanderStart(rng), dur = Math.round(uni(rng, 45, 110));
+        var end = Math.min(DAY - 1, start + dur);
+        var clash = outs.some(function (o) { return start < o.back + 2 && end > o.depart - 2; }) ||
+                    list.some(function (w) { return start < w.end + 30 && end > w.start - 30; });
+        if (clash || end - start < 30) continue;
+        var pattern = pick(rng, PATTERNS);
+        list.push({ start: start, end: end, pattern: pattern, origin: home().pos, poly: Wd.makeRoute(wanderNodes(rng, pattern)).poly });
+        break;
+      }
+    }
+    return list;
+  }
+
+  /* Walking away from a venue partway through an outing (e.g. leaving the day program). */
+  function planVenueWanders(rng, outs, p) {
+    var list = [];
+    outs.forEach(function (o) {
+      var stay = o.actualEnd - o.arrive;
+      if (stay < 30 || rng() >= p.venueWander) return;
+      var start = o.arrive + Math.round(uni(rng, 10, stay - 10)), dur = Math.round(uni(rng, 30, 70));
+      var nodes = extendRandom(rng, [P(o.place).node], 10);
+      var w = { start: start, end: Math.min(DAY - 1, start + dur), pattern: 'from ' + P(o.place).short, venue: o.place, origin: o.stayPos,
+                poly: [o.stayPos].concat(Wd.makeRoute(nodes).poly) };
+      o.actualEnd = Math.max(o.actualEnd, w.end + 5);
+      o.back = o.actualEnd + o.backTrack.length;
+      list.push(w);
+    });
+    return list;
+  }
+
+  /* ---------- the Synthetic Memory model (conversation -> calendar) ---------- */
+  function calendarFor(rng, outs, spurious, p) {
+    var ev = [];
+    outs.forEach(function (o) {
+      o.captured = rng() < (o.kind === 'habit' ? p.captureHabit : p.captureIrregular);
+      if (!o.captured) return;
+      var e = { place: o.place, start: o.start, end: o.start + o.dur, outing: o, issue: null };
+      var complete = rng() < p.pComplete;
+      if (!complete && p.assistant === 'assume') {
+        var miss = pick(rng, ['time', 'place', 'duration']);
+        if (miss === 'time' && o.start !== 540) { e.start = 540; e.end = 540 + o.dur; e.issue = 'Assumed 9:00 AM start'; }
+        else if (miss === 'place') { e.place = null; e.issue = 'No location saved'; }
+        else if (miss === 'duration' && o.dur > 60) { e.end = e.start + 60; e.issue = 'Assumed 1 hour'; }
+      }
+      if (rng() < p.extractErr) {
+        var shift = (rng() < 0.5 ? -1 : 1) * 60 * (1 + Math.floor(rng() * 3));
+        e.start += shift; e.end += shift;
+        e.issue = (e.issue ? e.issue + '; ' : '') + 'Extraction error (' + (shift > 0 ? '+' : '') + shift / 60 + ' h)';
+      }
+      if (p.assistant === 'ask' && e.issue && rng() < p.readbackCatch) {
+        e.caught = e.issue; e.issue = null;
+        e.place = o.place; e.start = o.start; e.end = o.start + o.dur;
+      }
+      e.start = clampDay(e.start); e.end = clampDay(e.end);
+      ev.push(e);
+    });
+    spurious.forEach(function (s) {
+      s.blocked = p.gate && rng() < p.gateCatch;
+      if (!s.blocked) ev.push({ place: s.place, start: s.start, end: s.start + s.dur, spurious: true, issue: 'Spurious event (never said by Margaret)' });
+    });
+    return ev;
+  }
+  function planSpurious(rng, p) {
+    var n = poisson(rng, p.spuriousPerWeek / 7), list = [];
+    var choices = Wd.PLACES.filter(function (x) { return x.key !== 'home'; }).map(function (x) { return x.key; });
+    for (var i = 0; i < n; i++) list.push({ place: pick(rng, choices), start: 15 * Math.round(uni(rng, 600, 1320) / 15), dur: 60 });
+    return list;
+  }
+
+  /* ---------- allowances (where and when leaving home is expected) ---------- */
+  function allowance(placeKey, from, to, label, kind) {
+    var r = Wd.route(home().node, P(placeKey).node);
+    return { place: placeKey, from: from, to: to, poly: r.poly, dest: P(placeKey).pos, label: label, kind: kind };
+  }
+  function mozoAllowances(events, p) {
+    return events.filter(function (e) { return e.place; }).map(function (e) {
+      var tt = Math.ceil(Wd.route(home().node, P(e.place).node).length / DRIVE);
+      var a = allowance(e.place, e.start - tt - p.buf, e.end + tt + p.buf, P(e.place).short, 'mozo');
+      a.event = e; return a;
+    });
+  }
+  function learnRoutine(p) {
+    var rng = R.mulberry32(p.seed * 7 + 13), trips = {};
+    for (var d = -28; d < 0; d++) {
+      planOutings(rng, d).forEach(function (o) {
+        buildOuting(rng, o, p);
+        var k = o.place + '|' + dowOf(d);
+        (trips[k] = trips[k] || []).push(o);
+      });
+    }
+    var habits = [];
+    Object.keys(trips).forEach(function (k) {
+      var list = trips[k];
+      if (list.length < 3) return;
+      habits.push({
+        place: list[0].place, dow: +k.split('|')[1],
+        from: Math.min.apply(null, list.map(function (o) { return o.depart; })),
+        to: Math.max.apply(null, list.map(function (o) { return o.back; })),
+        seen: list.length
+      });
+    });
+    return habits;
+  }
+  function inAllowance(a, m, q, W) {
+    if (m < a.from || m > a.to) return false;
+    if (Wd.distToPoly(q, a.poly) <= W) return true;
+    return Wd.dist(q, a.dest) <= W + 60;
+  }
+
+  /* ---------- one day ---------- */
+  function simulateDay(d, p, habits) {
+    var rng = R.mulberry32((p.seed * 1000003 + d * 7919) >>> 0);
+    var outs = planOutings(rng, d);
+    outs.forEach(function (o) { buildOuting(rng, o, p); });
+    var venueW = planVenueWanders(rng, outs, p);
+    var wanders = planWanders(rng, outs, p).concat(venueW).sort(function (a, b) { return a.start - b.start; });
+    var spurious = planSpurious(rng, p);
+    var events = calendarFor(rng, outs, spurious, p);
+
+    var hp = home().pos, tx = new Float32Array(DAY), ty = new Float32Array(DAY), ox = new Float32Array(DAY), oy = new Float32Array(DAY);
+    var away = new Uint8Array(DAY), m, q;
+    for (m = 0; m < DAY; m++) { tx[m] = hp[0] + R.gauss(rng) * 8; ty[m] = hp[1] + R.gauss(rng) * 8; }
+    outs.forEach(function (o) {
+      for (m = Math.max(0, o.depart); m < Math.min(DAY, o.back); m++) {
+        if (m < o.arrive) q = o.outTrack[m - o.depart];
+        else if (m < o.actualEnd) q = [o.stayPos[0] + R.gauss(rng) * 10, o.stayPos[1] + R.gauss(rng) * 10];
+        else q = o.backTrack[Math.min(o.backTrack.length - 1, m - o.actualEnd)];
+        tx[m] = q[0]; ty[m] = q[1]; away[m] = 1;
+      }
+    });
+    wanders.forEach(function (w) {
+      w.firstExit = -1;
+      for (m = w.start; m < w.end; m++) {
+        q = Wd.pointAt(w.poly, (m - w.start) * WALK);
+        tx[m] = q[0]; ty[m] = q[1];
+        if (w.firstExit < 0 && Wd.dist(q, w.origin) > (w.venue ? 150 : p.R)) w.firstExit = m;
+      }
+      w.leftHome = w.firstExit >= 0;
+    });
+    for (m = 0; m < DAY; m++) {
+      if (rng() < p.dropout) { ox[m] = NaN; oy[m] = NaN; }
+      else { ox[m] = tx[m] + R.gauss(rng) * p.sigma; oy[m] = ty[m] + R.gauss(rng) * p.sigma; }
+    }
+
+    var day = { d: d, dow: dowOf(d), outs: outs, wanders: wanders, spurious: spurious, events: events, tx: tx, ty: ty, ox: ox, oy: oy, away: away };
+    day.mozoA = mozoAllowances(events, p);
+    day.routA = habits.filter(function (h) { return h.dow === day.dow; }).map(function (h) {
+      return allowance(h.place, h.from - p.buf, h.to + p.buf, P(h.place).short, 'routine');
+    });
+    evaluate(day, p);
+    return day;
+  }
+
+  function evaluate(day, p) {
+    var hp = home().pos, res = {};
+    DETECTORS.forEach(function (D) { res[D.key] = { alarm: new Uint8Array(DAY), onsets: [], out: 0, inn: 0, on: false }; });
+    for (var m = 0; m < DAY; m++) {
+      if (isNaN(day.ox[m])) { DETECTORS.forEach(function (D) { res[D.key].alarm[m] = res[D.key].on ? 1 : 0; }); continue; }
+      var q = [day.ox[m], day.oy[m]], atHome = Wd.dist(q, hp) <= p.R, mz = atHome, rt = atHome;
+      if (!atHome) {
+        mz = day.mozoA.some(function (a) { return inAllowance(a, m, q, p.W); });
+        rt = day.routA.some(function (a) { return inAllowance(a, m, q, p.W); });
+      }
+      var ok = { 'static': atHome, routine: rt, mozo: mz, hybrid: mz || rt };
+      DETECTORS.forEach(function (D) {
+        var s = res[D.key];
+        if (!ok[D.key]) { s.out++; s.inn = 0; if (!s.on && s.out >= 2) { s.on = true; s.onsets.push(m); } }
+        else { s.inn++; s.out = 0; if (s.on && s.inn >= 10) s.on = false; }
+        s.alarm[m] = s.on ? 1 : 0;
+      });
+    }
+    var open = { 'static': 0, routine: 0, mozo: 0, hybrid: 0 };
+    function anyOpen(list, t) { for (var i = 0; i < list.length; i++) if (t >= list[i].from && t <= list[i].to) return true; return false; }
+    for (var t = 0; t < DAY; t++) {
+      if (day.away[t]) continue;
+      var a = anyOpen(day.mozoA, t), b = anyOpen(day.routA, t);
+      if (a) open.mozo++; if (b) open.routine++; if (a || b) open.hybrid++;
+    }
+    var stats = {};
+    DETECTORS.forEach(function (D) {
+      var s = res[D.key], st = { fa: 0, ep: 0, det: 0, fast: 0, lat: [], falseOnsets: [], open: open[D.key] };
+      s.onsets.forEach(function (t) {
+        var real = day.wanders.some(function (w) { return t >= w.start && t <= w.end + 5; });
+        if (!real) { st.fa++; st.falseOnsets.push(t); }
+      });
+      day.wanders.forEach(function (w) {
+        if (!w.leftHome) return;
+        st.ep++;
+        var hit = s.alarm[w.firstExit] ? w.firstExit : -1;
+        if (hit < 0) for (var i = 0; i < s.onsets.length; i++) if (s.onsets[i] >= w.start && s.onsets[i] <= w.end + 5) { hit = s.onsets[i]; break; }
+        w[D.key] = hit < 0 ? null : Math.max(0, hit - w.firstExit);
+        if (hit >= 0) { st.det++; st.lat.push(Math.max(0, hit - w.firstExit)); if (hit - w.firstExit <= 5) st.fast++; }
+      });
+      stats[D.key] = st;
+      delete s.out; delete s.inn; delete s.on;
+    });
+    day.res = res; day.stats = stats;
+  }
+
+  /* ---------- batch + statistics ---------- */
+  function median(a) { if (!a.length) return NaN; var s = a.slice().sort(function (x, y) { return x - y; }), k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; }
+  function pct(sorted, q) { if (!sorted.length) return NaN; var i = Math.min(sorted.length - 1, Math.max(0, Math.round(q * (sorted.length - 1)))); return sorted[i]; }
+
+  function summarize(days, seed) {
+    var N = days.length, rng = R.mulberry32(seed + 99), B = 400, out = {};
+    DETECTORS.forEach(function (D) {
+      var k = D.key, fa = 0, ep = 0, det = 0, fast = 0, open = 0, lat = [];
+      days.forEach(function (d) { var s = d.stats[k]; fa += s.fa; ep += s.ep; det += s.det; fast += s.fast; open += s.open; lat = lat.concat(s.lat); });
+      var bF = [], bD = [];
+      for (var b = 0; b < B; b++) {
+        var f = 0, e = 0, t = 0;
+        for (var i = 0; i < N; i++) { var s = days[Math.floor(rng() * N)].stats[k]; f += s.fa; e += s.ep; t += s.det; }
+        bF.push(7 * f / N); if (e) bD.push(t / e);
+      }
+      bF.sort(function (x, y) { return x - y; }); bD.sort(function (x, y) { return x - y; });
+      out[k] = {
+        faWeek: 7 * fa / N, faLo: pct(bF, 0.025), faHi: pct(bF, 0.975),
+        detRate: ep ? det / ep : NaN, detLo: pct(bD, 0.025), detHi: pct(bD, 0.975),
+        latMed: median(lat), latMean: lat.length ? lat.reduce(function (a, b) { return a + b; }, 0) / lat.length : NaN, fastRate: ep ? fast / ep : NaN, openHoursWeek: 7 * open / N / 60,
+        episodes: ep, detected: det, falseAlarms: fa
+      };
+    });
+    return out;
+  }
+
+  function run(params) {
+    var p = Object.assign({}, DEFAULTS, params || {});
+    var habits = learnRoutine(p), days = [];
+    for (var d = 0; d < p.days; d++) days.push(simulateDay(d, p, habits));
+    var totals = { venueWanders: 0, errands: 0, outings: 0, irregular: 0, wanders: 0, nearHome: 0, spurious: 0, spuriousApplied: 0, events: 0, eventIssues: 0, caught: 0, detours: 0 };
+    days.forEach(function (day) {
+      totals.outings += day.outs.length;
+      totals.irregular += day.outs.filter(function (o) { return o.kind === 'irregular'; }).length;
+      totals.detours += day.outs.filter(function (o) { return o.detour; }).length;
+      totals.wanders += day.wanders.length;
+      totals.venueWanders += day.wanders.filter(function (w) { return w.venue; }).length;
+      totals.errands += day.outs.filter(function (o) { return o.errand; }).length;
+      totals.nearHome += day.wanders.filter(function (w) { return !w.leftHome; }).length;
+      totals.spurious += day.spurious.length;
+      totals.spuriousApplied += day.events.filter(function (e) { return e.spurious; }).length;
+      totals.events += day.events.length;
+      totals.eventIssues += day.events.filter(function (e) { return e.issue; }).length;
+      totals.caught += day.events.filter(function (e) { return e.caught; }).length;
+    });
+    return { params: p, habits: habits, days: days, summary: summarize(days, p.seed), totals: totals };
+  }
+
+  H.sim = {
+    DAY: DAY, DOW: DOW, DETECTORS: DETECTORS, DEFAULTS: DEFAULTS, HABITS: HABITS,
+    run: run, fmtTime: fmtTime, place: P, inAllowance: inAllowance
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+// FUNCTION_END simEngine
+</script>
+<script>
+/* HALO simulation — settings from the query string
+ * canonical: HALO.settings in simulated-day.html — duplicated on experiment.html, keep in sync by hand.
+ * Allow-list with range checks. Keys and ranges are the Experiment page's controls (from v2 js/experiment.js).
+ * A value that is unknown, malformed, out of range, off-step, or repeated falls back to the paper's
+ * default in HALO.sim.DEFAULTS. Raw query text is never evaluated and never written into the page.
+ */
+(function (root) {
+  var H = root.HALO;
+  var NUM = /^\d{1,10}(\.\d{1,4})?$/; // 10 digits so every seed up to 2147483647 parses
+  var SPEC = {
+    seed:            { label: 'Random seed',             int: true, min: 1, max: 2147483647, step: 1 },
+    days:            { label: 'Length of the run',       min: 28, max: 336, step: 28, fmt: function (v) { return (v / 7) + ' weeks'; } },
+    assistant:       { label: 'Assistant behavior',      oneOf: ['ask', 'assume'], fmt: function (v) { return v === 'ask' ? "Ask, don't assume" : 'Fill in defaults'; } },
+    gate:            { label: 'Caregiver approval gate', bool: true, fmt: function (v) { return v ? 'On' : 'Off'; } },
+    W:               { label: 'Corridor half-width',     min: 50, max: 400, step: 10, unit: ' m' },
+    buf:             { label: 'Time buffer',             min: 0, max: 60, step: 5, unit: ' min' },
+    R:               { label: 'Home geofence radius',    min: 80, max: 300, step: 10, unit: ' m' },
+    sigma:           { label: 'GPS noise',               min: 5, max: 60, step: 5, unit: ' m' },
+    detour:          { label: 'Trips on a different route',       min: 0, max: 0.5, step: 0.05, pct: true },
+    errand:          { label: 'Quick stops off the route',        min: 0, max: 0.6, step: 0.05, pct: true },
+    captureHabit:    { label: 'Habits mentioned in conversation', min: 0, max: 1, step: 0.05, pct: true },
+    wanderPerWeek:   { label: 'Wandering episodes per week',      min: 0.5, max: 5, step: 0.5 },
+    spuriousPerWeek: { label: 'Spurious events per week',         min: 0, max: 4, step: 0.5 }
+  };
+  var KEYS = Object.keys(SPEC);
+  function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  function onStep(v, s) { var k = (v - s.min) / s.step; return Math.abs(k - Math.round(k)) < 1e-9; }
+  function parseOne(raw, s) {
+    if (typeof raw !== 'string' || raw.length > 12) return undefined;
+    if (s.oneOf) return s.oneOf.indexOf(raw) >= 0 ? raw : undefined;
+    if (s.bool) return raw === '1' ? true : raw === '0' ? false : undefined;
+    if (!NUM.test(raw)) return undefined;
+    var v = Number(raw);
+    if (!isFinite(v) || v < s.min || v > s.max || !onStep(v, s)) return undefined;
+    if (s.int && Math.floor(v) !== v) return undefined;
+    return v;
+  }
+  function fmtValue(k, v) {
+    var s = SPEC[k];
+    if (s.fmt) return s.fmt(v);
+    if (s.pct) return Math.round(v * 100) + '%';
+    return v + (s.unit || '');
+  }
+
+  H.settings = {
+    SPEC: SPEC,
+    /** Returns { params, rejected, unknown }: params holds only valid allow-listed values. */
+    fromQuery: function (search) {
+      var q = new URLSearchParams(search || ''), params = {}, rejected = [], seen = {}, unknown = 0;
+      q.forEach(function (raw, key) {
+        if (!has(SPEC, key)) { unknown++; return; }
+        if (has(seen, key)) { delete params[key]; if (rejected.indexOf(key) < 0) rejected.push(key); return; } // repeated key: ambiguous
+        seen[key] = true;
+        var v = parseOne(raw, SPEC[key]);
+        if (v === undefined) rejected.push(key); else params[key] = v;
+      });
+      return { params: params, rejected: rejected, unknown: unknown };
+    },
+    /** Serializes params that differ from the defaults. Each value goes back through the same allow-list
+     *  check as fromQuery, and anything fromQuery would reject is left out (so it falls back to the default). */
+    toQuery: function (params) {
+      var D = H.sim.DEFAULTS, parts = [];
+      KEYS.forEach(function (k) {
+        if (!has(params, k) || params[k] === D[k]) return;
+        var v = params[k], raw = typeof v === 'boolean' ? (v ? '1' : '0') : String(v);
+        if (parseOne(raw, SPEC[k]) !== v) return;
+        parts.push(k + '=' + encodeURIComponent(raw));
+      });
+      return parts.length ? '?' + parts.join('&') : '';
+    },
+    /** Human-readable list of non-default settings, built only from allow-listed keys and parsed values. */
+    describe: function (params) {
+      var D = H.sim.DEFAULTS;
+      return KEYS.filter(function (k) { return has(params, k) && params[k] !== D[k]; })
+        .map(function (k) { return SPEC[k].label + ': ' + fmtValue(k, params[k]); });
+    }
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>
+/* HALO simulation — "Experiment": batch runs, charts, and comparisons
+ * canonical: v2 js/experiment.js, copied with the changes marked [page]. Not protected; only used here. */
+(function (root) {
+  var H = root.HALO, S;
+  var COLORS = { 'static': 'var(--muted)', routine: 'var(--routine)', mozo: 'var(--mozo)', hybrid: 'var(--zone)' };
+  var SHORT = { 'static': 'Static', routine: 'Routine', mozo: 'MoZo', hybrid: 'Hybrid' };
+  var params = {};
+  function $(id) { return document.getElementById(id); }
+
+  var GROUPS = [
+    { title: 'Assistant and safeguards', fields: [
+      { key: 'assistant', type: 'seg', label: 'Assistant behavior', options: [['ask', "Ask, don't assume"], ['assume', 'Fill in defaults']] },
+      { key: 'gate', type: 'seg', label: 'Caregiver approval gate', options: [[true, 'On'], [false, 'Off']], help: 'Rejects 95% of spurious events before they reach the calendar.' }
+    ] },
+    { title: 'Zone shape', fields: [
+      { key: 'W', type: 'range', label: 'Corridor half-width', min: 50, max: 400, step: 10, unit: ' m', help: 'How far from the route counts as "on the way".' },
+      { key: 'buf', type: 'range', label: 'Time buffer', min: 0, max: 60, step: 5, unit: ' min', help: 'Extra time before and after each event.' },
+      { key: 'R', type: 'range', label: 'Home geofence radius', min: 80, max: 300, step: 10, unit: ' m' }
+    ] },
+    { title: 'Real-world messiness', fields: [
+      { key: 'sigma', type: 'range', label: 'GPS noise', min: 5, max: 60, step: 5, unit: ' m' },
+      { key: 'detour', type: 'range', label: 'Trips on a different route', min: 0, max: 0.5, step: 0.05, pct: true },
+      { key: 'errand', type: 'range', label: 'Quick stops off the route', min: 0, max: 0.6, step: 0.05, pct: true },
+      { key: 'captureHabit', type: 'range', label: 'Habits mentioned in conversation', min: 0, max: 1, step: 0.05, pct: true }
+    ] },
+    { title: 'Events', fields: [
+      { key: 'wanderPerWeek', type: 'range', label: 'Wandering episodes per week', min: 0.5, max: 5, step: 0.5 },
+      { key: 'spuriousPerWeek', type: 'range', label: 'Spurious events per week', min: 0, max: 4, step: 0.5, help: 'Hallucinated by the model or injected, e.g. by a TV in the room.' },
+      { key: 'days', type: 'range', label: 'Length of the run', min: 28, max: 336, step: 28, weeks: true },
+      { key: 'seed', type: 'number', label: 'Random seed' }
+    ] }
+  ];
+
+  function fmtVal(f, v) {
+    if (f.pct) return Math.round(v * 100) + '%';
+    if (f.weeks) return (v / 7) + ' weeks';
+    return v + (f.unit || '');
+  }
+  function buildForm() {
+    var host = $('eParams'); host.innerHTML = '';
+    GROUPS.forEach(function (g) {
+      var grp = document.createElement('div'); grp.className = 'grp';
+      grp.innerHTML = '<p class="grp-t">' + g.title + '</p>';
+      g.fields.forEach(function (f) {
+        var wrap = document.createElement('div'); wrap.className = 'field';
+        var id = 'p-' + f.key;
+        if (f.type === 'seg') {
+          wrap.innerHTML = '<label>' + f.label + '</label><div class="seg" role="group" aria-label="' + f.label + '">' +
+            f.options.map(function (o, i) { return '<button type="button" data-i="' + i + '" aria-pressed="' + (params[f.key] === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div>' +
+            (f.help ? '<span class="help">' + f.help + '</span>' : '');
+          wrap.querySelectorAll('button').forEach(function (b) {
+            b.addEventListener('click', function () {
+              params[f.key] = f.options[+b.dataset.i][0];
+              wrap.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', x === b); });
+            });
+          });
+        } else if (f.type === 'range') {
+          wrap.innerHTML = '<label for="' + id + '">' + f.label + ' <output id="' + id + '-o">' + fmtVal(f, params[f.key]) + '</output></label>' +
+            '<input type="range" id="' + id + '" min="' + f.min + '" max="' + f.max + '" step="' + f.step + '" value="' + params[f.key] + '">' +
+            (f.help ? '<span class="help">' + f.help + '</span>' : '');
+          var inp = wrap.querySelector('input');
+          inp.addEventListener('input', function () { params[f.key] = +inp.value; $(id + '-o').textContent = fmtVal(f, +inp.value); });
+        } else {
+          wrap.innerHTML = '<label for="' + id + '">' + f.label + '</label><input id="' + id + '" type="number" min="1" max="2147483647" step="1" value="' + params[f.key] + '" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--card)">';
+          var n = wrap.querySelector('input');
+          n.addEventListener('change', function () { params[f.key] = Math.min(H.settings.SPEC.seed.max, Math.max(1, Math.round(+n.value) || 1)); n.value = params[f.key]; }); // [page] capped at the allow-list maximum so the day link can carry it
+        }
+        grp.appendChild(wrap);
+      });
+      host.appendChild(grp);
+    });
+  }
+
+  /* ---------- charts ---------- */
+  function barChart(title, help, data, opts) {
+    var Wc = 300, Hc = 200, L = 34, B = 26, T = 18, plotH = Hc - B - T, bw = 44, gap = (Wc - L - 4 * bw) / 5;
+    var max = opts.max || Math.max.apply(null, data.map(function (d) { return isNaN(d.hi) ? d.v : d.hi; })) * 1.15 || 1;
+    var Y = function (v) { return T + plotH - (v / max) * plotH; };
+    var s = '<svg viewBox="0 0 ' + Wc + ' ' + Hc + '" role="img" aria-label="' + title + '">';
+    s += '<line class="c-axis" x1="' + L + '" x2="' + Wc + '" y1="' + (T + plotH) + '" y2="' + (T + plotH) + '"/>';
+    data.forEach(function (d, i) {
+      var x = L + gap + i * (bw + gap), y = Y(d.v);
+      s += '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + (T + plotH - y) + '" rx="4" fill="' + COLORS[d.key] + '"/>';
+      if (!isNaN(d.lo) && !isNaN(d.hi)) {
+        var cx = x + bw / 2;
+        s += '<line class="c-whisk" x1="' + cx + '" x2="' + cx + '" y1="' + Y(d.hi) + '" y2="' + Y(d.lo) + '"/>';
+        s += '<line class="c-whisk" x1="' + (cx - 6) + '" x2="' + (cx + 6) + '" y1="' + Y(d.hi) + '" y2="' + Y(d.hi) + '"/>';
+        s += '<line class="c-whisk" x1="' + (cx - 6) + '" x2="' + (cx + 6) + '" y1="' + Y(d.lo) + '" y2="' + Y(d.lo) + '"/>';
+      }
+      s += '<text class="c-val" x="' + (x + bw / 2) + '" y="' + (Math.min(y, isNaN(d.hi) ? y : Y(d.hi)) - 5) + '" text-anchor="middle">' + opts.fmt(d.v) + '</text>';
+      s += '<text class="c-lbl" x="' + (x + bw / 2) + '" y="' + (Hc - 8) + '" text-anchor="middle">' + SHORT[d.key] + '</text>';
+    });
+    s += '</svg>';
+    return '<section class="card chart"><h3>' + title + '</h3><div class="body"><p>' + help + '</p>' + s + '</div></section>';
+  }
+  function lineChart(title, help, xs, series, opts) {
+    var Wc = 420, Hc = 220, L = 40, B = 30, T = 14, R = 10, pw = Wc - L - R, ph = Hc - B - T;
+    var all = []; series.forEach(function (s) { all = all.concat(s.ys); });
+    var max = opts.max != null ? opts.max : Math.max.apply(null, all) * 1.15 || 1, min = opts.min || 0;
+    var X = function (i) { return L + (xs[i] - xs[0]) / (xs[xs.length - 1] - xs[0]) * pw; };
+    var Y = function (v) { return T + ph - (v - min) / (max - min) * ph; };
+    var s = '<svg viewBox="0 0 ' + Wc + ' ' + Hc + '" role="img" aria-label="' + title + '">';
+    for (var k = 0; k <= 4; k++) {
+      var v = min + (max - min) * k / 4;
+      s += '<line class="c-axis" x1="' + L + '" x2="' + (Wc - R) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" opacity=".6"/>';
+      s += '<text class="c-lbl" x="' + (L - 6) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + opts.fmt(v) + '</text>';
+    }
+    xs.forEach(function (x, i) { s += '<text class="c-lbl" x="' + X(i) + '" y="' + (Hc - 10) + '" text-anchor="middle">' + x + '</text>'; });
+    series.forEach(function (se) {
+      s += '<polyline fill="none" stroke="' + COLORS[se.key] + '" stroke-width="2.5" points="' + se.ys.map(function (y, i) { return X(i) + ',' + Y(y); }).join(' ') + '"/>';
+      se.ys.forEach(function (y, i) { s += '<circle cx="' + X(i) + '" cy="' + Y(y) + '" r="3.5" fill="' + COLORS[se.key] + '"/>'; });
+    });
+    s += '</svg>';
+    var leg = '<div class="legend" style="margin:4px 0 0">' + series.map(function (se) { return '<span><i class="sw" style="background:' + COLORS[se.key] + '"></i>' + se.name + '</span>'; }).join('') + '</div>';
+    return '<div><p style="margin:0 0 4px;font-weight:700">' + title + '</p><p style="margin:0 0 6px;font-size:.85rem;color:var(--muted)">' + help + '</p>' + s + leg + '</div>';
+  }
+
+  function f1(v) { return isNaN(v) ? '\u2013' : v.toFixed(1); }
+  function f2(v) { return isNaN(v) ? '\u2013' : v.toFixed(2); } // [page] false alarms at Table I precision
+  function pc(v) { return isNaN(v) ? '\u2013' : Math.round(v * 100) + '%'; }
+
+  function renderRun(r) {
+    var sm = r.summary, D = S.DETECTORS.map(function (d) { return d.key; });
+    $('eCharts').innerHTML =
+      barChart('False alarms per week', 'Alerts during legitimate outings. Lower is better. Whiskers show 95% intervals.',
+        D.map(function (k) { return { key: k, v: sm[k].faWeek, lo: sm[k].faLo, hi: sm[k].faHi }; }), { fmt: f1 }) +
+      barChart('Wandering caught within 5 min', 'Share of episodes alerted within five minutes of leaving the zone. Higher is better.',
+        D.map(function (k) { return { key: k, v: sm[k].fastRate, lo: NaN, hi: NaN }; }), { fmt: pc, max: 1.15 }) +
+      barChart('Zone open while home (h/week)', 'Hours the zone is wider than the house while Margaret is home. Lower is safer.',
+        D.map(function (k) { return { key: k, v: sm[k].openHoursWeek, lo: NaN, hi: NaN }; }), { fmt: f1 });
+
+    var t = r.totals;
+    $('eTable').innerHTML = '<table class="tbl"><thead><tr><th>Detector</th><th>False alarms / week (95% CI)</th><th>Caught \u2264 5 min</th><th>Caught at all</th><th>Avg. min to alert</th><th>Zone open while home (h/wk)</th></tr></thead><tbody>' +
+      S.DETECTORS.map(function (d) {
+        var x = sm[d.key];
+        return '<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + COLORS[d.key] + ';margin-right:6px"></span>' + d.name + '</td><td>' + f2(x.faWeek) + ' (' + f2(x.faLo) + '\u2013' + f2(x.faHi) + ')</td><td>' + pc(x.fastRate) + '</td><td>' + pc(x.detRate) + '</td><td>' + f1(x.latMean) + '</td><td>' + f1(x.openHoursWeek) + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<p class="results-note">' + r.params.days + ' simulated days: ' + t.outings + ' outings (' + t.irregular + ' one-off), ' + t.wanders + ' wandering episodes (' +
+      t.venueWanders + ' away from a venue), ' + t.events + ' calendar events (' + t.eventIssues + ' still wrong after read-back, ' + t.caught + ' fixed by read-back), ' +
+      t.spurious + ' spurious events (' + t.spuriousApplied + ' reached the calendar).</p>';
+
+    var st = sm['static'], hy = sm.hybrid, mz = sm.mozo;
+    var cut = st.faWeek ? Math.round((1 - hy.faWeek / st.faWeek) * 100) : 0;
+    $('eTake').innerHTML = 'Compared with a static geofence, <b>MoZo + routine</b> cut false alarms from <b>' + f1(st.faWeek) + '</b> to <b>' + f1(hy.faWeek) +
+      '</b> per week (' + cut + '% fewer) and caught ' + pc(hy.fastRate) + ' of wandering within five minutes. MoZo alone produced ' + f1(mz.faWeek) +
+      ' false alarms per week; the zone was open ' + f1(hy.openHoursWeek) + ' hours a week while Margaret was home, which is the price of fewer false alarms.';
+  }
+
+  function busy(on) {
+    $('eBusy').hidden = !on;
+    ['eRun', 'eCompare', 'eGate', 'eSweep', 'eReset'].forEach(function (id) { $(id).disabled = on; });
+  }
+  function later(fn) { busy(true); setTimeout(function () { try { fn(); } finally { busy(false); } }, 30); }
+
+  function runMain() {
+    later(function () {
+      var r = S.run(params);
+      renderRun(r);
+      $('eExtraCard').hidden = true;
+      if (H.experiment.onRun) H.experiment.onRun(r); // [page] no day view here; startup updates the day link
+    });
+  }
+  function compare(key, a, b, labelA, labelB, title) {
+    later(function () {
+      var ra = S.run(Object.assign({}, params, (function () { var o = {}; o[key] = a; return o; })()));
+      var rb = S.run(Object.assign({}, params, (function () { var o = {}; o[key] = b; return o; })()));
+      var rows = [
+        ['MoZo: false alarms / week', f1(ra.summary.mozo.faWeek), f1(rb.summary.mozo.faWeek)],
+        ['MoZo + routine: false alarms / week', f1(ra.summary.hybrid.faWeek), f1(rb.summary.hybrid.faWeek)],
+        ['MoZo: zone open while home (h/wk)', f1(ra.summary.mozo.openHoursWeek), f1(rb.summary.mozo.openHoursWeek)],
+        ['MoZo: wandering caught \u2264 5 min', pc(ra.summary.mozo.fastRate), pc(rb.summary.mozo.fastRate)],
+        ['Calendar events still wrong', ra.totals.eventIssues + ' of ' + ra.totals.events, rb.totals.eventIssues + ' of ' + rb.totals.events],
+        ['Spurious events that reached the calendar', ra.totals.spuriousApplied + ' of ' + ra.totals.spurious, rb.totals.spuriousApplied + ' of ' + rb.totals.spurious]
+      ];
+      $('eExtraTitle').textContent = title;
+      $('eExtra').innerHTML = '<div class="tblwrap"><table class="tbl"><thead><tr><th>Same days, same settings</th><th>' + labelA + '</th><th>' + labelB + '</th></tr></thead><tbody>' +
+        rows.map(function (r) { return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+        '<p class="results-note">Only "' + title.toLowerCase() + '" changes between the two columns. Static geofence and learned routine are unaffected because they never read the calendar.</p>';
+      $('eExtraCard').hidden = false;
+      $('eExtraCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+  function sweep() {
+    later(function () {
+      var xs = [60, 90, 120, 150, 200, 260, 330, 400], keys = ['routine', 'mozo', 'hybrid'], fa = {}, fast = {}, open = {};
+      keys.forEach(function (k) { fa[k] = []; fast[k] = []; open[k] = []; });
+      xs.forEach(function (w) {
+        var r = S.run(Object.assign({}, params, { W: w, days: Math.min(params.days, 168) }));
+        keys.forEach(function (k) { fa[k].push(r.summary[k].faWeek); fast[k].push(r.summary[k].fastRate); });
+      });
+      var ser = function (obj) { return keys.map(function (k) { return { key: k, name: S.DETECTORS.filter(function (d) { return d.key === k; })[0].name, ys: obj[k] }; }); };
+      $('eExtraTitle').textContent = 'Corridor width sweep (meters)';
+      $('eExtra').innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px">' +
+        lineChart('False alarms per week', 'Wider corridors forgive detours, parking lots, and quick stops.', xs, ser(fa), { fmt: function (v) { return v.toFixed(1); } }) +
+        lineChart('Wandering caught within 5 min', 'Wider corridors let someone get farther along a route before anyone is told.', xs, ser(fast), { min: 0.5, max: 1, fmt: function (v) { return Math.round(v * 100) + '%'; } }) +
+        '</div><p class="results-note">Each point is a separate run on the same days (up to 24 weeks). The best width is a trade-off the research has to justify, not a constant.</p>';
+      $('eExtraCard').hidden = false;
+      $('eExtraCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+
+  H.experiment = {
+    init: function (initial) { // [page] starts from the validated query settings
+      S = H.sim;
+      params = Object.assign({}, S.DEFAULTS, initial || {});
+      buildForm();
+      $('eRun').addEventListener('click', runMain);
+      $('eCompare').addEventListener('click', function () { compare('assistant', 'ask', 'assume', "Ask, don't assume", 'Fill in defaults', 'Assistant behavior'); });
+      $('eGate').addEventListener('click', function () { compare('gate', true, false, 'Gate on', 'Gate off', 'Approval gate'); });
+      $('eSweep').addEventListener('click', sweep);
+      $('eReset').addEventListener('click', function () { params = Object.assign({}, S.DEFAULTS); buildForm(); });
+      var r = S.run(params);
+      renderRun(r);
+      if (H.experiment.onRun) H.experiment.onRun(r); // [page]
+      return r;
+    }
+  };
+})(window);
+</script>
+<script>
+/* Page startup — replaces the v2 tab controller (js/main.js) for this page only.
+ * Reads settings from the query string, runs the experiment once, and keeps the
+ * "Watch a day from this run" link pointed at the settings of the last main run.
+ */
+(function (root) {
+  var H = root.HALO;
+  function $(id) { return document.getElementById(id); }
+
+  // canonical: showSettings() in simulated-day.html, reworded for this page (link goes the other way, via #eWatch).
+  function showSettings(parsed) {
+    var box = $('eSettings'), changed = H.settings.describe(parsed.params);
+    box.textContent = '';
+    var main = document.createElement('span');
+    if (changed.length) {
+      var b = document.createElement('b'); b.textContent = 'Started from a link: ';
+      main.appendChild(b); main.appendChild(document.createTextNode(changed.join(' · ')));
+    } else {
+      var d = document.createElement('b'); d.textContent = "Started from the paper's default settings";
+      main.appendChild(d); main.appendChild(document.createTextNode(' (seed ' + H.sim.DEFAULTS.seed + ', ' + (H.sim.DEFAULTS.days / 7) + ' weeks)'));
+    }
+    box.appendChild(main);
+    if (parsed.rejected.length || parsed.unknown) {
+      var w = document.createElement('span'); w.className = 'warn';
+      var bits = [];
+      if (parsed.rejected.length) bits.push('Ignored invalid ' + parsed.rejected.map(function (k) { return H.settings.SPEC[k].label.toLowerCase(); }).join(', ') + ' (using the default)');
+      if (parsed.unknown) bits.push(parsed.unknown + ' unknown setting' + (parsed.unknown > 1 ? 's' : '') + ' ignored');
+      w.textContent = bits.join('; ') + '.';
+      box.appendChild(w);
+    }
+  }
+
+  // Called after every main run (startup and "Run experiment"); comparisons and the sweep leave it alone.
+  H.experiment.onRun = function (r) {
+    H.expRun = r; // exposed for the page's verification harness
+    $('eWatch').href = 'simulated-day.html' + H.settings.toQuery(r.params);
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var parsed = H.settings.fromQuery(root.location.search);
+    showSettings(parsed);
+    setTimeout(function () {
+      H.experiment.init(parsed.params);
+      $('eBusy').hidden = true;
+    }, 30);
+  });
+})(window);
+</script>
+</body>
+</html>

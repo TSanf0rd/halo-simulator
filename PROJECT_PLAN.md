@@ -49,7 +49,7 @@ The list lives in a local, untracked file (`NEVER_PUBLIC.local.md`, gitignored);
 | 2 — index.html | Done | 2026-10-20 | this commit |
 | 3 — how-it-works.html | Done | 2026-10-20 | this commit |
 | 4 — simulated-day.html | Done | 2026-10-20 | this commit |
-| 5 — experiment.html | Not started | — | — |
+| 5 — experiment.html | Done | 2026-10-20 | this commit |
 | 6 — about.html | Not started | — | — |
 | Preflight | Not started | — | — |
 | Deploy | Not started | — | — |
