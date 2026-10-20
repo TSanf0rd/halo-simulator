@@ -4,3 +4,4 @@ token.json
 *.pdf
 paper/
 NEVER_PUBLIC.local.md
+.claude/settings.local.json

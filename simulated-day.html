@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A simulated day · HALO Simulator</title>
+<meta name="description" content="One synthetic day played minute by minute: four detectors watch the same GPS track, and a timeline separates real alerts from false alarms.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+/* Design tokens — canonical: index.html (taken unchanged from v2 css/style.css). Keep in sync by hand.
+ * Color carries meaning: teal = home geofence, indigo = MoZo, ochre = learned routine, crimson = alert.
+ */
+:root{
+  --bg:#F3F6F7; --card:#FFFFFF; --paper:#E6ECEE; --street:#FFFFFF; --park:#CFE3D2; --block:#D6DEE3;
+  --ink:#1C2A39; --muted:#566676; --line:#D2DADF;
+  --zone:#23877B; --zone-soft:#E1F1EE;
+  --mozo:#4F63C9; --mozo-soft:#E8EBFA;
+  --routine:#A0731F; --routine-soft:#F6EEDC;
+  --alert:#C8324A; --alert-soft:#FBE7EA;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10161D; --card:#18212B; --paper:#1A242E; --street:#2A3743; --park:#1F3528; --block:#212C37;
+    --ink:#E5ECF1; --muted:#98A7B4; --line:#2B3946;
+    --zone:#4CB6A8; --zone-soft:#17322E;
+    --mozo:#8C9BF2; --mozo-soft:#232A4A;
+    --routine:#D9A441; --routine-soft:#3A2F17;
+    --alert:#F2687E; --alert-soft:#3A1E25;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10161D; --card:#18212B; --paper:#1A242E; --street:#2A3743; --park:#1F3528; --block:#212C37;
+  --ink:#E5ECF1; --muted:#98A7B4; --line:#2B3946;
+  --zone:#4CB6A8; --zone-soft:#17322E;
+  --mozo:#8C9BF2; --mozo-soft:#232A4A;
+  --routine:#D9A441; --routine-soft:#3A2F17;
+  --alert:#F2687E; --alert-soft:#3A1E25;
+}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.5}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--mozo);outline-offset:2px}
+[hidden]{display:none !important}
+
+.wrap{max-width:1240px;margin:0 auto;padding:0 20px}
+
+/* ---------- masthead (canonical: index.html) ---------- */
+.top{background:var(--card);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;padding-top:14px;padding-bottom:14px}
+.mark{font-weight:700;letter-spacing:.14em;font-size:.9rem;color:inherit;text-decoration:none}
+.mark span{color:var(--muted);font-weight:400;letter-spacing:.02em;margin-left:8px}
+.top nav{display:flex;flex-wrap:wrap;gap:4px 18px}
+.top nav a{color:var(--muted);font-size:.9rem;text-decoration:none}
+.top nav a:hover{color:var(--ink);text-decoration:underline}
+.top nav a[aria-current="page"]{color:var(--ink);font-weight:700}
+
+/* ---------- page head + illustrative label (canonical: how-it-works.html) ---------- */
+.pagehead{padding:28px 0 6px}
+.pagehead h1{margin:0;font-size:clamp(1.5rem,2.6vw,2rem);line-height:1.15;letter-spacing:-0.01em}
+.illus{display:flex;gap:10px;align-items:flex-start;margin:14px 0 18px;padding:10px 14px;border:1px dashed var(--muted);border-radius:10px;background:var(--card);font-size:.92rem;color:var(--muted);max-width:90ch}
+.illus b{color:var(--ink);flex-shrink:0;font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;padding-top:2px}
+.settings{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin:0 0 14px;font-size:.9rem;color:var(--muted)}
+.settings b{color:var(--ink)}
+.settings .warn{color:var(--alert);font-weight:700}
+.settings a{color:var(--ink)}
+
+/* ---------- shared components (canonical: v2 css/style.css) ---------- */
+main .wrap{padding-bottom:40px}
+.intro{color:var(--muted);max-width:75ch;margin:0 0 16px}
+.intro strong{color:var(--ink)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.card > h2,.card > h3{font-size:1rem;margin:0;padding:12px 16px;border-bottom:1px solid var(--line)}
+.card h2 small,.card h3 small{font-weight:400;color:var(--muted);margin-left:6px}
+.body{padding:12px 16px 14px}
+.empty{color:var(--muted);margin:0}
+.btn{border:1px solid var(--line);background:var(--card);padding:8px 14px;border-radius:9px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--ink);color:var(--card);border-color:var(--ink);font-weight:700}
+.btn:disabled{opacity:.4;cursor:default}
+.busy{color:var(--muted);font-style:italic}
+
+/* ---------- map (canonical: how-it-works.html, from v2 css/style.css) ---------- */
+.mapbox{position:relative;background:var(--paper);border-radius:14px 14px 0 0;overflow:hidden}
+svg.map{display:block;width:100%;height:auto}
+.map .ground{fill:var(--paper)}
+.map .block{fill:var(--block)}
+.map .park{fill:var(--park)}
+.map .street{stroke:var(--street);stroke-width:56;fill:none;stroke-linecap:round}
+.map .street.arterial{stroke-width:90}
+.map .homezone{fill:var(--zone);fill-opacity:.16;stroke:var(--zone);stroke-width:12;stroke-dasharray:36 26}
+.map .corr{fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:.24}
+.map .dest{fill-opacity:.16;stroke-width:10;stroke-dasharray:30 22}
+.map .mozo .corr{stroke:var(--mozo)} .map .mozo .dest{fill:var(--mozo);stroke:var(--mozo)}
+.map .routine .corr{stroke:var(--routine)} .map .routine .dest{fill:var(--routine);stroke:var(--routine)}
+.map .mozo.bad .corr{stroke:var(--alert)} .map .mozo.bad .dest{fill:var(--alert);stroke:var(--alert)}
+.map .house{fill:var(--ink)}
+.map .pin{fill:var(--card);stroke:var(--ink);stroke-width:14}
+.map .plabel{font-size:84px;font-weight:700;fill:var(--ink);paint-order:stroke;stroke:var(--paper);stroke-width:18px;stroke-linejoin:round}
+.map .plabel.short{display:none}
+.map .plan{fill:none;stroke:var(--ink);stroke-width:14;stroke-dasharray:4 30;stroke-linecap:round;opacity:.5}
+.map .trail{fill:none;stroke:var(--ink);stroke-width:18;stroke-linecap:round;stroke-linejoin:round;opacity:.35}
+.map .fix{fill:none;stroke:var(--ink);stroke-width:10;opacity:.6}
+.map .tag{stroke:var(--card);stroke-width:16;fill:var(--zone);transition:fill .25s}
+.map .tag[data-state="mozo"]{fill:var(--mozo)}
+.map .tag[data-state="routine"]{fill:var(--routine)}
+.map .tag[data-state="alert"]{fill:var(--alert)}
+.map .tag[data-state="moving"]{fill:var(--ink)}
+.map .pulse{fill:none;stroke:var(--alert);stroke-width:14;opacity:0}
+.map .pulse.on{animation:pulse 1.4s ease-out infinite}
+@keyframes pulse{0%{r:50;opacity:.9}100%{r:190;opacity:0}}
+.clock{position:absolute;top:12px;left:12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 12px;line-height:1.25}
+.clock .d{font-size:.82rem;color:var(--muted)}
+.clock .t{font-size:1.4rem;font-weight:700;font-variant-numeric:tabular-nums}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.85rem;color:var(--muted);margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;display:inline-block}
+.sw.zone{background:var(--zone);opacity:.55}.sw.mozo{background:var(--mozo);opacity:.55}.sw.routine{background:var(--routine);opacity:.55}.sw.alert{background:var(--alert)}
+.sw.false{background:repeating-linear-gradient(135deg,var(--alert) 0 2px,transparent 2px 5px);border:1px solid var(--alert)}
+.sw.tag{background:var(--ink);border-radius:50%}
+
+/* ---------- simulated day (canonical: v2 css/style.css) ---------- */
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin-bottom:14px}
+.daynav{display:flex;align-items:center;gap:6px}
+.daynav .lbl{min-width:13ch;text-align:center;font-weight:700}
+.finders{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.finders .hint{font-size:.85rem;color:var(--muted)}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 12px;cursor:pointer;font-size:.88rem}
+.chip:hover{border-color:var(--muted)}
+.play{display:flex;align-items:center;gap:8px;margin-left:auto}
+.play select{border:1px solid var(--line);border-radius:8px;padding:7px 8px;background:var(--card)}
+.day-grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px}
+.dets{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.dets li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:9px;background:var(--paper)}
+.dets .nm{display:flex;align-items:center;gap:8px;font-weight:700}
+.dets .key{width:10px;height:10px;border-radius:50%}
+.state{font-size:.82rem;font-weight:700;padding:2px 9px;border-radius:999px;background:var(--zone-soft);color:var(--zone)}
+.state.on{background:var(--alert);color:var(--card)}
+.state.on.false{background:var(--alert-soft);color:var(--alert);border:1px dashed var(--alert)}
+.facts{list-style:none;margin:0;padding:0;display:grid;gap:8px;font-size:.92rem}
+.facts li{padding-left:12px;border-left:3px solid var(--line)}
+.facts li.wander{border-left-color:var(--alert)}
+.facts li.outing{border-left-color:var(--zone)}
+.facts li.issue{border-left-color:var(--routine)}
+.facts .sub{color:var(--muted);font-size:.85rem}
+.timeline{margin-top:18px}
+.timeline svg{display:block;width:100%;height:auto;cursor:pointer}
+.tl-lbl{font-size:12px;fill:var(--muted)}
+.tl-row{fill:var(--paper)}
+.tl-tick{stroke:var(--line);stroke-width:1}
+.tl-hour{font-size:11px;fill:var(--muted)}
+.tl-out{fill:var(--zone)} .tl-wander{fill:var(--alert)}
+.tl-mozo{fill:var(--mozo);fill-opacity:.55} .tl-mozo.bad{fill:var(--alert);fill-opacity:.45}
+.tl-routine{fill:var(--routine);fill-opacity:.55}
+.tl-true{fill:var(--alert)} .tl-false{fill:url(#hatch);stroke:var(--alert);stroke-width:1}
+.tl-head{stroke:var(--ink);stroke-width:2}
+.tl-text{font-size:10px;fill:var(--card);font-weight:700;pointer-events:none}
+
+footer{margin-top:24px;border-top:1px solid var(--line)}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 24px;padding-top:18px;padding-bottom:28px;font-size:.88rem;color:var(--muted)}
+footer p{margin:0}
+footer a{color:inherit}
+
+@media (max-width:980px){
+  .day-grid{grid-template-columns:1fr}
+  .play{margin-left:0}
+}
+/* Narrow screens (canonical: how-it-works.html): short place names >= 12px, clock docked above the map.
+ * The timeline keeps its 1000-unit drawing at full size and scrolls inside its card, so its labels stay readable. */
+@media (max-width:600px){
+  .map .plabel.long{display:none}
+  .map .plabel.short{display:inline;font-size:150px;stroke-width:26px}
+  .clock{position:static;display:flex;align-items:baseline;gap:10px;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:8px 14px}
+  .clock .t{font-size:1.15rem}
+  .timeline .body{overflow-x:auto}
+  .timeline svg{min-width:1000px}
+}
+@media (prefers-reduced-motion: reduce){ .map .pulse.on{animation:none;opacity:.6} .map .tag{transition:none} }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="mark" href="index.html">HALO<span>Simulator</span></a>
+    <nav aria-label="Pages">
+      <a href="how-it-works.html">How it works</a>
+      <a href="simulated-day.html" aria-current="page">A simulated day</a>
+      <a href="experiment.html">Experiment</a>
+      <a href="about.html">About the model</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="pagehead">
+      <h1>A simulated day</h1>
+    </div>
+    <p class="illus" role="note"><b>Illustrative</b><span>Synthetic data. Every outing, wandering episode, GPS fix, and calendar event on this page comes from a seeded model with assumed parameters. Nothing here describes a real person.</span></p>
+
+    <p class="settings" id="dSettings" aria-live="polite"></p>
+    <p class="intro">One day from the experiment, minute by minute. All four detectors watch the same noisy GPS track at the same time. <strong>Solid red</strong> marks a real alert during wandering; <strong>hatched red</strong> marks a false alarm during a legitimate outing.</p>
+    <p class="busy" id="dBusy">Simulating…</p>
+    <div class="toolbar">
+      <div class="daynav">
+        <button class="btn" id="dPrev" aria-label="Previous day">‹</button>
+        <span class="lbl" id="dLabel"></span>
+        <button class="btn" id="dNext" aria-label="Next day">›</button>
+      </div>
+      <div class="finders" id="dFinders"><span class="hint">Find a day with:</span></div>
+      <div class="play">
+        <button class="btn primary" id="dPlay">Play day</button>
+        <select id="dSpeed" aria-label="Playback speed">
+          <option value="20">20 min/sec</option>
+          <option value="60" selected>1 hour/sec</option>
+          <option value="180">3 hours/sec</option>
+        </select>
+      </div>
+    </div>
+    <div class="day-grid">
+      <section class="card" aria-label="Map">
+        <div class="mapbox" id="dMap" style="border-radius:14px"><div class="clock"><div class="d" id="dDow"></div><div class="t" id="dTime"></div></div></div>
+      </section>
+      <div style="display:grid;gap:14px;align-content:start">
+        <section class="card"><h3>Detectors right now</h3><div class="body"><ul class="dets" id="dDets"></ul></div></section>
+        <section class="card"><h3>What happened today</h3><div class="body"><ul class="facts" id="dFacts"></ul></div></section>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="sw zone"></i>Home geofence</span><span><i class="sw mozo"></i>MoZo (from calendar)</span>
+      <span><i class="sw routine"></i>Learned routine</span><span><i class="sw tag"></i>Halo Tag</span>
+      <span><i class="sw alert"></i>Real alert</span><span><i class="sw false"></i>False alarm</span>
+    </div>
+    <section class="card timeline"><h3>Timeline <small>click anywhere to jump</small></h3><div class="body" id="dTimeline"></div></section>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>HALO research team, Missouri S&amp;T</p>
+    <p><a href="index.html">All pages</a> · Space plays and pauses; the arrow keys step 15 minutes.</p>
+  </div>
+</footer>
+
+<script>
+// FUNCTION_START worldEngine — PROTECTED, baseline in .baseline/worldEngine.txt
+/* HALO simulation — world model
+ * A synthetic neighborhood: a 10 x 7 street grid with 400 m blocks.
+ * Everything is in meters. Routing uses Dijkstra with cheaper arterial roads.
+ */
+(function (root) {
+  var H = (root.HALO = root.HALO || {});
+
+  var SP = 400; // block spacing in meters
+  var NX = 10, NY = 7;
+  var ART_ROWS = [3], ART_COLS = [5]; // arterial roads (faster, preferred by routing)
+
+  function id(x, y) { return y * NX + x; }
+  function xy(n) { return [n % NX, Math.floor(n / NX)]; }
+  function pos(n) { return [(n % NX) * SP, Math.floor(n / NX) * SP]; }
+
+  function neighbors(n) {
+    var c = xy(n), x = c[0], y = c[1], out = [];
+    if (x > 0) out.push(id(x - 1, y));
+    if (x < NX - 1) out.push(id(x + 1, y));
+    if (y > 0) out.push(id(x, y - 1));
+    if (y < NY - 1) out.push(id(x, y + 1));
+    return out;
+  }
+  function isArterial(a, b) {
+    var A = xy(a), B = xy(b);
+    return (A[1] === B[1] && ART_ROWS.indexOf(A[1]) >= 0) || (A[0] === B[0] && ART_COLS.indexOf(A[0]) >= 0);
+  }
+  function edgeKey(a, b) { return a < b ? a + '-' + b : b + '-' + a; }
+  function manhattan(a, b) { var A = xy(a), B = xy(b); return Math.abs(A[0] - B[0]) + Math.abs(A[1] - B[1]); }
+
+  function dijkstra(a, b, costFn) {
+    var N = NX * NY, dist = [], prev = [], done = [], i;
+    for (i = 0; i < N; i++) { dist.push(Infinity); prev.push(-1); done.push(false); }
+    dist[a] = 0;
+    for (;;) {
+      var u = -1, best = Infinity;
+      for (i = 0; i < N; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i; }
+      if (u === -1 || u === b) break;
+      done[u] = true;
+      var nb = neighbors(u);
+      for (i = 0; i < nb.length; i++) {
+        var v = nb[i], c = dist[u] + costFn(u, v);
+        if (c < dist[v] - 1e-9) { dist[v] = c; prev[v] = u; }
+      }
+    }
+    var path = [];
+    for (var n = b; n !== -1; n = prev[n]) path.unshift(n);
+    return path;
+  }
+  function roadCost(u, v) { return isArterial(u, v) ? 0.6 : 1; }
+
+  /* ---------- polyline geometry ---------- */
+  function polyLength(poly) {
+    var L = 0;
+    for (var i = 1; i < poly.length; i++) L += Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]);
+    return L;
+  }
+  function pointAt(poly, d) {
+    if (d <= 0) return poly[0].slice();
+    for (var i = 1; i < poly.length; i++) {
+      var a = poly[i - 1], b = poly[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (d <= L) { var t = L ? d / L : 0; return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; }
+      d -= L;
+    }
+    return poly[poly.length - 1].slice();
+  }
+  function distToSeg(p, a, b) {
+    var dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+    var t = L2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+  }
+  function distToPoly(p, poly) {
+    if (poly.length === 1) return Math.hypot(p[0] - poly[0][0], p[1] - poly[0][1]);
+    var m = Infinity;
+    for (var i = 1; i < poly.length; i++) m = Math.min(m, distToSeg(p, poly[i - 1], poly[i]));
+    return m;
+  }
+  function dist(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1]); }
+
+  function makeRoute(nodes) {
+    var poly = nodes.map(pos);
+    return { nodes: nodes, poly: poly, length: polyLength(poly) };
+  }
+  var cache = {};
+  /** Fastest driving route (prefers arterials). */
+  function route(a, b) {
+    var k = 'r' + a + '>' + b;
+    return cache[k] || (cache[k] = makeRoute(dijkstra(a, b, roadCost)));
+  }
+  /** An alternative route that avoids the edges of the main route where possible. */
+  function detour(a, b) {
+    var k = 'd' + a + '>' + b;
+    if (cache[k]) return cache[k];
+    var main = route(a, b), used = {};
+    for (var i = 1; i < main.nodes.length; i++) used[edgeKey(main.nodes[i - 1], main.nodes[i])] = true;
+    return (cache[k] = makeRoute(dijkstra(a, b, function (u, v) { return roadCost(u, v) * (used[edgeKey(u, v)] ? 3 : 1); })));
+  }
+  /** Walking path: shortest by distance, ignores arterials. */
+  function walkPath(a, b) { return dijkstra(a, b, function () { return 1; }); }
+
+  var PLACES = [
+    { key: 'home',     name: 'Home',              short: 'Home',     node: id(2, 5) },
+    { key: 'clinic',   name: 'Riverside Clinic',  short: 'Clinic',   node: id(8, 1) },
+    { key: 'grocery',  name: 'Market St Grocery', short: 'Grocery',  node: id(6, 4) },
+    { key: 'church',   name: "St. Anne's Church", short: 'Church',   node: id(1, 1) },
+    { key: 'center',   name: 'Community Center',  short: 'Center',   node: id(5, 2) },
+    { key: 'pharmacy', name: 'Corner Pharmacy',   short: 'Pharmacy', node: id(3, 3) },
+    { key: 'friend',   name: "Martha's house",    short: 'Martha',   node: id(8, 5) },
+    { key: 'diner',    name: 'Elm St Diner',      short: 'Diner',    node: id(7, 3) },
+    { key: 'bank',     name: 'First Bank',        short: 'Bank',     node: id(4, 0) },
+    { key: 'park',     name: 'Oak Park',          short: 'Park',     node: id(0, 3) }
+  ];
+  PLACES.forEach(function (p) { p.pos = pos(p.node); });
+  function place(key) { for (var i = 0; i < PLACES.length; i++) if (PLACES[i].key === key) return PLACES[i]; return null; }
+
+  /* ---------- seeded randomness ---------- */
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function gauss(rng) {
+    var u = 0, v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  H.world = {
+    SP: SP, NX: NX, NY: NY, ART_ROWS: ART_ROWS, ART_COLS: ART_COLS,
+    id: id, xy: xy, pos: pos, neighbors: neighbors, manhattan: manhattan, isArterial: isArterial,
+    route: route, detour: detour, walkPath: walkPath, makeRoute: makeRoute,
+    polyLength: polyLength, pointAt: pointAt, distToPoly: distToPoly, dist: dist,
+    PLACES: PLACES, place: place
+  };
+  H.rng = { mulberry32: mulberry32, gauss: gauss };
+})(typeof window !== 'undefined' ? window : globalThis);
+// FUNCTION_END worldEngine
+</script>
+<script>
+// FUNCTION_START simEngine — PROTECTED, baseline in .baseline/simEngine.txt
+/* HALO simulation — engine
+ * Generates synthetic days (outings, wandering, calendar events), simulates GPS,
+ * runs four detectors side by side, and scores them.
+ *
+ * Detectors
+ *   static   : alert whenever the tag leaves the home geofence
+ *   routine  : home geofence + allowances learned from 4 weeks of location history
+ *              (a stand-in for commercial "learned routine" products)
+ *   mozo     : home geofence + Mobile Zones built from confirmed calendar events
+ *   hybrid   : mozo OR routine
+ */
+(function (root) {
+  var H = root.HALO, Wd = H.world, R = H.rng;
+  var DAY = 1440, DRIVE = 450, WALK = 55; // meters per minute
+  var DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var DETECTORS = [
+    { key: 'static',  name: 'Static geofence' },
+    { key: 'routine', name: 'Learned routine' },
+    { key: 'mozo',    name: 'MoZo' },
+    { key: 'hybrid',  name: 'MoZo + routine' }
+  ];
+
+  /* Weekly habits (dow: 0 = Sunday). Each happens with 85% probability. */
+  var HABITS = [
+    { place: 'church',   dow: 0, start: 540, dur: 90 },
+    { place: 'pharmacy', dow: 1, start: 900, dur: 20 },
+    { place: 'grocery',  dow: 2, start: 600, dur: 45 },
+    { place: 'center',   dow: 4, start: 780, dur: 120 },
+    { place: 'grocery',  dow: 6, start: 630, dur: 45 }
+  ];
+  var IRREGULAR = ['clinic', 'friend', 'diner', 'bank'];
+
+  var DEFAULTS = {
+    seed: 2026,
+    days: 168,             // 24 weeks
+    assistant: 'ask',      // 'ask' | 'assume'
+    gate: true,            // caregiver approval for new events
+    W: 150,                // corridor half-width (m)
+    buf: 20,               // time buffer around events (min)
+    R: 150,                // home geofence radius (m)
+    sigma: 15,             // GPS noise, 1 s.d. (m)
+    dropout: 0.03,         // probability a GPS fix is missing
+    detour: 0.15,          // probability a trip uses an alternative route
+    errand: 0.25,          // probability of a quick stop just off the route
+    venueWander: 0.05,     // probability she walks away from a venue during an outing
+    wanderPerWeek: 2,
+    spuriousPerWeek: 1,    // hallucinated or injected events reaching the pipeline
+    captureHabit: 0.6,     // share of habitual outings mentioned in conversation
+    captureIrregular: 0.95,// share of one-off outings mentioned in conversation
+    pComplete: 0.55,       // share of mentions that already contain every field
+    extractErr: 0.07,      // LLM extraction error rate (≈ 1 − validation F1)
+    readbackCatch: 0.8,    // share of wrong events caught when Halo reads them back
+    gateCatch: 0.95        // share of spurious events rejected by the caregiver
+  };
+
+  function P(key) { return Wd.place(key); }
+  function home() { return P('home'); }
+  function uni(rng, a, b) { return a + rng() * (b - a); }
+  function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
+  function poisson(rng, lam) { var L = Math.exp(-lam), k = 0, p = 1; do { k++; p *= rng(); } while (p > L); return k - 1; }
+  function clampDay(m) { return Math.max(0, Math.min(DAY - 1, m)); }
+  function dowOf(d) { return ((d % 7) + 7) % 7; }
+  function fmtTime(m) {
+    m = ((Math.round(m) % DAY) + DAY) % DAY;
+    var h = Math.floor(m / 60), mm = m % 60, ap = h < 12 ? 'AM' : 'PM', h12 = h % 12 || 12;
+    return h12 + ':' + (mm < 10 ? '0' : '') + mm + ' ' + ap;
+  }
+
+  /* ---------- outings ---------- */
+  function planOutings(rng, d) {
+    var dow = dowOf(d), outs = [];
+    HABITS.forEach(function (h) {
+      if (h.dow === dow && rng() < 0.85)
+        outs.push({ place: h.place, kind: 'habit', start: Math.round(h.start + R.gauss(rng) * 10), dur: h.dur });
+    });
+    if (rng() < 0.3) {
+      var o = { place: pick(rng, IRREGULAR), kind: 'irregular', start: 540 + 15 * Math.floor(rng() * 33), dur: 15 * Math.round(uni(rng, 3, 8)) };
+      if (!outs.some(function (x) { return Math.abs(x.start - o.start) < 240; })) outs.push(o);
+    }
+    return outs;
+  }
+  /* Per-minute positions from a list of legs: {move: poly} or {stay: pos, n: minutes}. */
+  function legsTrack(legs, speed) {
+    var out = [];
+    legs.forEach(function (leg) {
+      if (leg.stay) { for (var i = 0; i < leg.n; i++) out.push(leg.stay); return; }
+      var L = Wd.polyLength(leg.move), n = Math.ceil(L / speed);
+      for (var j = 0; j < n; j++) out.push(Wd.pointAt(leg.move, j * speed));
+    });
+    return out;
+  }
+  function splitPoly(poly, d) {
+    var pre = [poly[0]], acc = 0, i;
+    for (i = 1; i < poly.length; i++) {
+      var L = Wd.dist(poly[i - 1], poly[i]);
+      if (acc + L >= d) break;
+      acc += L; pre.push(poly[i]);
+    }
+    var cut = Wd.pointAt(poly, d);
+    pre.push(cut);
+    return { pre: pre, post: [cut].concat(poly.slice(i)), cut: cut };
+  }
+  function buildOuting(rng, o, p) {
+    var h = home().node, dest = P(o.place), L, ang, off;
+    o.detour = rng() < p.detour;
+    o.route = o.detour ? Wd.detour(h, dest.node) : Wd.route(h, dest.node);
+    L = o.route.length;
+    ang = rng() * 2 * Math.PI; off = uni(rng, 20, 150); // parking lot / entrance is not exactly on the street corner
+    o.stayPos = [dest.pos[0] + Math.cos(ang) * off, dest.pos[1] + Math.sin(ang) * off];
+    var legs = [];
+    o.errand = rng() < p.errand && L > 800;
+    if (o.errand) { // quick stop just off the route (gas station, drive-through)
+      var sp = splitPoly(o.route.poly, uni(rng, 0.3, 0.7) * L), c = sp.cut;
+      var nxt = Wd.pointAt(o.route.poly, Math.min(L, Wd.polyLength(sp.pre) + 5));
+      var dx = nxt[0] - c[0], dy = nxt[1] - c[1], n = Math.hypot(dx, dy) || 1, sgn = rng() < 0.5 ? -1 : 1, so = uni(rng, 150, 320);
+      o.errandPos = [c[0] - dy / n * so * sgn, c[1] + dx / n * so * sgn];
+      legs.push({ move: sp.pre }, { move: [c, o.errandPos] }, { stay: o.errandPos, n: Math.round(uni(rng, 3, 8)) }, { move: [o.errandPos, c] }, { move: sp.post });
+    } else legs.push({ move: o.route.poly });
+    legs.push({ move: [dest.pos, o.stayPos] });
+    o.outTrack = legsTrack(legs, DRIVE);
+    o.backTrack = legsTrack([{ move: [o.stayPos, dest.pos] }, { move: o.route.poly.slice().reverse() }], DRIVE);
+    o.travel = Math.ceil(L / DRIVE);
+    o.depart = o.start - o.outTrack.length - Math.round(uni(rng, 3, 12));
+    o.arrive = o.depart + o.outTrack.length;
+    o.actualEnd = o.start + o.dur + Math.round(uni(rng, -5, 25));
+    o.back = o.actualEnd + o.backTrack.length;
+    return o;
+  }
+
+  /* ---------- wandering ---------- */
+  var PATTERNS = ['direct', 'random', 'lapping', 'pacing'];
+  function wanderStart(rng) {
+    var u = rng();
+    if (u < 0.25) return rng() < 0.6 ? Math.round(uni(rng, 1260, 1380)) : Math.round(uni(rng, 0, 150)); // night
+    if (u < 0.6) return Math.round(uni(rng, 900, 1140));  // late afternoon ("sundowning")
+    return Math.round(uni(rng, 480, 900));                 // daytime
+  }
+  function extendRandom(rng, seq, n) {
+    for (var i = 0; i < n; i++) {
+      var cur = seq[seq.length - 1], prev = seq[seq.length - 2];
+      var nb = Wd.neighbors(cur).filter(function (x) { return x !== prev; });
+      seq.push(pick(rng, nb));
+    }
+    return seq;
+  }
+  function wanderNodes(rng, pattern) {
+    var h = home().node, c = Wd.xy(h), hx = c[0], hy = c[1], seq = [h], i;
+    if (pattern === 'direct') {
+      var t; do { t = Math.floor(rng() * Wd.NX * Wd.NY); } while (Wd.manhattan(t, h) < 4);
+      seq = extendRandom(rng, Wd.walkPath(h, t), 10);
+    } else if (pattern === 'random') {
+      seq = extendRandom(rng, seq, 18);
+    } else if (pattern === 'lapping') {
+      for (i = 0; i < 6; i++) seq.push(Wd.id(hx + 1, hy), Wd.id(hx + 1, hy - 1), Wd.id(hx, hy - 1), h);
+    } else { // pacing
+      for (i = 0; i < 8; i++) seq.push(Wd.id(hx + 2, hy), h);
+    }
+    return seq;
+  }
+  function planWanders(rng, outs, p) {
+    var n = poisson(rng, p.wanderPerWeek / 7), list = [];
+    for (var k = 0; k < n; k++) {
+      for (var tries = 0; tries < 12; tries++) {
+        var start = wanderStart(rng), dur = Math.round(uni(rng, 45, 110));
+        var end = Math.min(DAY - 1, start + dur);
+        var clash = outs.some(function (o) { return start < o.back + 2 && end > o.depart - 2; }) ||
+                    list.some(function (w) { return start < w.end + 30 && end > w.start - 30; });
+        if (clash || end - start < 30) continue;
+        var pattern = pick(rng, PATTERNS);
+        list.push({ start: start, end: end, pattern: pattern, origin: home().pos, poly: Wd.makeRoute(wanderNodes(rng, pattern)).poly });
+        break;
+      }
+    }
+    return list;
+  }
+
+  /* Walking away from a venue partway through an outing (e.g. leaving the day program). */
+  function planVenueWanders(rng, outs, p) {
+    var list = [];
+    outs.forEach(function (o) {
+      var stay = o.actualEnd - o.arrive;
+      if (stay < 30 || rng() >= p.venueWander) return;
+      var start = o.arrive + Math.round(uni(rng, 10, stay - 10)), dur = Math.round(uni(rng, 30, 70));
+      var nodes = extendRandom(rng, [P(o.place).node], 10);
+      var w = { start: start, end: Math.min(DAY - 1, start + dur), pattern: 'from ' + P(o.place).short, venue: o.place, origin: o.stayPos,
+                poly: [o.stayPos].concat(Wd.makeRoute(nodes).poly) };
+      o.actualEnd = Math.max(o.actualEnd, w.end + 5);
+      o.back = o.actualEnd + o.backTrack.length;
+      list.push(w);
+    });
+    return list;
+  }
+
+  /* ---------- the Synthetic Memory model (conversation -> calendar) ---------- */
+  function calendarFor(rng, outs, spurious, p) {
+    var ev = [];
+    outs.forEach(function (o) {
+      o.captured = rng() < (o.kind === 'habit' ? p.captureHabit : p.captureIrregular);
+      if (!o.captured) return;
+      var e = { place: o.place, start: o.start, end: o.start + o.dur, outing: o, issue: null };
+      var complete = rng() < p.pComplete;
+      if (!complete && p.assistant === 'assume') {
+        var miss = pick(rng, ['time', 'place', 'duration']);
+        if (miss === 'time' && o.start !== 540) { e.start = 540; e.end = 540 + o.dur; e.issue = 'Assumed 9:00 AM start'; }
+        else if (miss === 'place') { e.place = null; e.issue = 'No location saved'; }
+        else if (miss === 'duration' && o.dur > 60) { e.end = e.start + 60; e.issue = 'Assumed 1 hour'; }
+      }
+      if (rng() < p.extractErr) {
+        var shift = (rng() < 0.5 ? -1 : 1) * 60 * (1 + Math.floor(rng() * 3));
+        e.start += shift; e.end += shift;
+        e.issue = (e.issue ? e.issue + '; ' : '') + 'Extraction error (' + (shift > 0 ? '+' : '') + shift / 60 + ' h)';
+      }
+      if (p.assistant === 'ask' && e.issue && rng() < p.readbackCatch) {
+        e.caught = e.issue; e.issue = null;
+        e.place = o.place; e.start = o.start; e.end = o.start + o.dur;
+      }
+      e.start = clampDay(e.start); e.end = clampDay(e.end);
+      ev.push(e);
+    });
+    spurious.forEach(function (s) {
+      s.blocked = p.gate && rng() < p.gateCatch;
+      if (!s.blocked) ev.push({ place: s.place, start: s.start, end: s.start + s.dur, spurious: true, issue: 'Spurious event (never said by Margaret)' });
+    });
+    return ev;
+  }
+  function planSpurious(rng, p) {
+    var n = poisson(rng, p.spuriousPerWeek / 7), list = [];
+    var choices = Wd.PLACES.filter(function (x) { return x.key !== 'home'; }).map(function (x) { return x.key; });
+    for (var i = 0; i < n; i++) list.push({ place: pick(rng, choices), start: 15 * Math.round(uni(rng, 600, 1320) / 15), dur: 60 });
+    return list;
+  }
+
+  /* ---------- allowances (where and when leaving home is expected) ---------- */
+  function allowance(placeKey, from, to, label, kind) {
+    var r = Wd.route(home().node, P(placeKey).node);
+    return { place: placeKey, from: from, to: to, poly: r.poly, dest: P(placeKey).pos, label: label, kind: kind };
+  }
+  function mozoAllowances(events, p) {
+    return events.filter(function (e) { return e.place; }).map(function (e) {
+      var tt = Math.ceil(Wd.route(home().node, P(e.place).node).length / DRIVE);
+      var a = allowance(e.place, e.start - tt - p.buf, e.end + tt + p.buf, P(e.place).short, 'mozo');
+      a.event = e; return a;
+    });
+  }
+  function learnRoutine(p) {
+    var rng = R.mulberry32(p.seed * 7 + 13), trips = {};
+    for (var d = -28; d < 0; d++) {
+      planOutings(rng, d).forEach(function (o) {
+        buildOuting(rng, o, p);
+        var k = o.place + '|' + dowOf(d);
+        (trips[k] = trips[k] || []).push(o);
+      });
+    }
+    var habits = [];
+    Object.keys(trips).forEach(function (k) {
+      var list = trips[k];
+      if (list.length < 3) return;
+      habits.push({
+        place: list[0].place, dow: +k.split('|')[1],
+        from: Math.min.apply(null, list.map(function (o) { return o.depart; })),
+        to: Math.max.apply(null, list.map(function (o) { return o.back; })),
+        seen: list.length
+      });
+    });
+    return habits;
+  }
+  function inAllowance(a, m, q, W) {
+    if (m < a.from || m > a.to) return false;
+    if (Wd.distToPoly(q, a.poly) <= W) return true;
+    return Wd.dist(q, a.dest) <= W + 60;
+  }
+
+  /* ---------- one day ---------- */
+  function simulateDay(d, p, habits) {
+    var rng = R.mulberry32((p.seed * 1000003 + d * 7919) >>> 0);
+    var outs = planOutings(rng, d);
+    outs.forEach(function (o) { buildOuting(rng, o, p); });
+    var venueW = planVenueWanders(rng, outs, p);
+    var wanders = planWanders(rng, outs, p).concat(venueW).sort(function (a, b) { return a.start - b.start; });
+    var spurious = planSpurious(rng, p);
+    var events = calendarFor(rng, outs, spurious, p);
+
+    var hp = home().pos, tx = new Float32Array(DAY), ty = new Float32Array(DAY), ox = new Float32Array(DAY), oy = new Float32Array(DAY);
+    var away = new Uint8Array(DAY), m, q;
+    for (m = 0; m < DAY; m++) { tx[m] = hp[0] + R.gauss(rng) * 8; ty[m] = hp[1] + R.gauss(rng) * 8; }
+    outs.forEach(function (o) {
+      for (m = Math.max(0, o.depart); m < Math.min(DAY, o.back); m++) {
+        if (m < o.arrive) q = o.outTrack[m - o.depart];
+        else if (m < o.actualEnd) q = [o.stayPos[0] + R.gauss(rng) * 10, o.stayPos[1] + R.gauss(rng) * 10];
+        else q = o.backTrack[Math.min(o.backTrack.length - 1, m - o.actualEnd)];
+        tx[m] = q[0]; ty[m] = q[1]; away[m] = 1;
+      }
+    });
+    wanders.forEach(function (w) {
+      w.firstExit = -1;
+      for (m = w.start; m < w.end; m++) {
+        q = Wd.pointAt(w.poly, (m - w.start) * WALK);
+        tx[m] = q[0]; ty[m] = q[1];
+        if (w.firstExit < 0 && Wd.dist(q, w.origin) > (w.venue ? 150 : p.R)) w.firstExit = m;
+      }
+      w.leftHome = w.firstExit >= 0;
+    });
+    for (m = 0; m < DAY; m++) {
+      if (rng() < p.dropout) { ox[m] = NaN; oy[m] = NaN; }
+      else { ox[m] = tx[m] + R.gauss(rng) * p.sigma; oy[m] = ty[m] + R.gauss(rng) * p.sigma; }
+    }
+
+    var day = { d: d, dow: dowOf(d), outs: outs, wanders: wanders, spurious: spurious, events: events, tx: tx, ty: ty, ox: ox, oy: oy, away: away };
+    day.mozoA = mozoAllowances(events, p);
+    day.routA = habits.filter(function (h) { return h.dow === day.dow; }).map(function (h) {
+      return allowance(h.place, h.from - p.buf, h.to + p.buf, P(h.place).short, 'routine');
+    });
+    evaluate(day, p);
+    return day;
+  }
+
+  function evaluate(day, p) {
+    var hp = home().pos, res = {};
+    DETECTORS.forEach(function (D) { res[D.key] = { alarm: new Uint8Array(DAY), onsets: [], out: 0, inn: 0, on: false }; });
+    for (var m = 0; m < DAY; m++) {
+      if (isNaN(day.ox[m])) { DETECTORS.forEach(function (D) { res[D.key].alarm[m] = res[D.key].on ? 1 : 0; }); continue; }
+      var q = [day.ox[m], day.oy[m]], atHome = Wd.dist(q, hp) <= p.R, mz = atHome, rt = atHome;
+      if (!atHome) {
+        mz = day.mozoA.some(function (a) { return inAllowance(a, m, q, p.W); });
+        rt = day.routA.some(function (a) { return inAllowance(a, m, q, p.W); });
+      }
+      var ok = { 'static': atHome, routine: rt, mozo: mz, hybrid: mz || rt };
+      DETECTORS.forEach(function (D) {
+        var s = res[D.key];
+        if (!ok[D.key]) { s.out++; s.inn = 0; if (!s.on && s.out >= 2) { s.on = true; s.onsets.push(m); } }
+        else { s.inn++; s.out = 0; if (s.on && s.inn >= 10) s.on = false; }
+        s.alarm[m] = s.on ? 1 : 0;
+      });
+    }
+    var open = { 'static': 0, routine: 0, mozo: 0, hybrid: 0 };
+    function anyOpen(list, t) { for (var i = 0; i < list.length; i++) if (t >= list[i].from && t <= list[i].to) return true; return false; }
+    for (var t = 0; t < DAY; t++) {
+      if (day.away[t]) continue;
+      var a = anyOpen(day.mozoA, t), b = anyOpen(day.routA, t);
+      if (a) open.mozo++; if (b) open.routine++; if (a || b) open.hybrid++;
+    }
+    var stats = {};
+    DETECTORS.forEach(function (D) {
+      var s = res[D.key], st = { fa: 0, ep: 0, det: 0, fast: 0, lat: [], falseOnsets: [], open: open[D.key] };
+      s.onsets.forEach(function (t) {
+        var real = day.wanders.some(function (w) { return t >= w.start && t <= w.end + 5; });
+        if (!real) { st.fa++; st.falseOnsets.push(t); }
+      });
+      day.wanders.forEach(function (w) {
+        if (!w.leftHome) return;
+        st.ep++;
+        var hit = s.alarm[w.firstExit] ? w.firstExit : -1;
+        if (hit < 0) for (var i = 0; i < s.onsets.length; i++) if (s.onsets[i] >= w.start && s.onsets[i] <= w.end + 5) { hit = s.onsets[i]; break; }
+        w[D.key] = hit < 0 ? null : Math.max(0, hit - w.firstExit);
+        if (hit >= 0) { st.det++; st.lat.push(Math.max(0, hit - w.firstExit)); if (hit - w.firstExit <= 5) st.fast++; }
+      });
+      stats[D.key] = st;
+      delete s.out; delete s.inn; delete s.on;
+    });
+    day.res = res; day.stats = stats;
+  }
+
+  /* ---------- batch + statistics ---------- */
+  function median(a) { if (!a.length) return NaN; var s = a.slice().sort(function (x, y) { return x - y; }), k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; }
+  function pct(sorted, q) { if (!sorted.length) return NaN; var i = Math.min(sorted.length - 1, Math.max(0, Math.round(q * (sorted.length - 1)))); return sorted[i]; }
+
+  function summarize(days, seed) {
+    var N = days.length, rng = R.mulberry32(seed + 99), B = 400, out = {};
+    DETECTORS.forEach(function (D) {
+      var k = D.key, fa = 0, ep = 0, det = 0, fast = 0, open = 0, lat = [];
+      days.forEach(function (d) { var s = d.stats[k]; fa += s.fa; ep += s.ep; det += s.det; fast += s.fast; open += s.open; lat = lat.concat(s.lat); });
+      var bF = [], bD = [];
+      for (var b = 0; b < B; b++) {
+        var f = 0, e = 0, t = 0;
+        for (var i = 0; i < N; i++) { var s = days[Math.floor(rng() * N)].stats[k]; f += s.fa; e += s.ep; t += s.det; }
+        bF.push(7 * f / N); if (e) bD.push(t / e);
+      }
+      bF.sort(function (x, y) { return x - y; }); bD.sort(function (x, y) { return x - y; });
+      out[k] = {
+        faWeek: 7 * fa / N, faLo: pct(bF, 0.025), faHi: pct(bF, 0.975),
+        detRate: ep ? det / ep : NaN, detLo: pct(bD, 0.025), detHi: pct(bD, 0.975),
+        latMed: median(lat), latMean: lat.length ? lat.reduce(function (a, b) { return a + b; }, 0) / lat.length : NaN, fastRate: ep ? fast / ep : NaN, openHoursWeek: 7 * open / N / 60,
+        episodes: ep, detected: det, falseAlarms: fa
+      };
+    });
+    return out;
+  }
+
+  function run(params) {
+    var p = Object.assign({}, DEFAULTS, params || {});
+    var habits = learnRoutine(p), days = [];
+    for (var d = 0; d < p.days; d++) days.push(simulateDay(d, p, habits));
+    var totals = { venueWanders: 0, errands: 0, outings: 0, irregular: 0, wanders: 0, nearHome: 0, spurious: 0, spuriousApplied: 0, events: 0, eventIssues: 0, caught: 0, detours: 0 };
+    days.forEach(function (day) {
+      totals.outings += day.outs.length;
+      totals.irregular += day.outs.filter(function (o) { return o.kind === 'irregular'; }).length;
+      totals.detours += day.outs.filter(function (o) { return o.detour; }).length;
+      totals.wanders += day.wanders.length;
+      totals.venueWanders += day.wanders.filter(function (w) { return w.venue; }).length;
+      totals.errands += day.outs.filter(function (o) { return o.errand; }).length;
+      totals.nearHome += day.wanders.filter(function (w) { return !w.leftHome; }).length;
+      totals.spurious += day.spurious.length;
+      totals.spuriousApplied += day.events.filter(function (e) { return e.spurious; }).length;
+      totals.events += day.events.length;
+      totals.eventIssues += day.events.filter(function (e) { return e.issue; }).length;
+      totals.caught += day.events.filter(function (e) { return e.caught; }).length;
+    });
+    return { params: p, habits: habits, days: days, summary: summarize(days, p.seed), totals: totals };
+  }
+
+  H.sim = {
+    DAY: DAY, DOW: DOW, DETECTORS: DETECTORS, DEFAULTS: DEFAULTS, HABITS: HABITS,
+    run: run, fmtTime: fmtTime, place: P, inAllowance: inAllowance
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+// FUNCTION_END simEngine
+</script>
+<script>
+/* HALO simulation — settings from the query string
+ * canonical: HALO.settings in simulated-day.html — duplicated on experiment.html, keep in sync by hand.
+ * Allow-list with range checks. Keys and ranges are the Experiment page's controls (from v2 js/experiment.js).
+ * A value that is unknown, malformed, out of range, off-step, or repeated falls back to the paper's
+ * default in HALO.sim.DEFAULTS. Raw query text is never evaluated and never written into the page.
+ */
+(function (root) {
+  var H = root.HALO;
+  var NUM = /^\d{1,10}(\.\d{1,4})?$/; // 10 digits so every seed up to 2147483647 parses
+  var SPEC = {
+    seed:            { label: 'Random seed',             int: true, min: 1, max: 2147483647, step: 1 },
+    days:            { label: 'Length of the run',       min: 28, max: 336, step: 28, fmt: function (v) { return (v / 7) + ' weeks'; } },
+    assistant:       { label: 'Assistant behavior',      oneOf: ['ask', 'assume'], fmt: function (v) { return v === 'ask' ? "Ask, don't assume" : 'Fill in defaults'; } },
+    gate:            { label: 'Caregiver approval gate', bool: true, fmt: function (v) { return v ? 'On' : 'Off'; } },
+    W:               { label: 'Corridor half-width',     min: 50, max: 400, step: 10, unit: ' m' },
+    buf:             { label: 'Time buffer',             min: 0, max: 60, step: 5, unit: ' min' },
+    R:               { label: 'Home geofence radius',    min: 80, max: 300, step: 10, unit: ' m' },
+    sigma:           { label: 'GPS noise',               min: 5, max: 60, step: 5, unit: ' m' },
+    detour:          { label: 'Trips on a different route',       min: 0, max: 0.5, step: 0.05, pct: true },
+    errand:          { label: 'Quick stops off the route',        min: 0, max: 0.6, step: 0.05, pct: true },
+    captureHabit:    { label: 'Habits mentioned in conversation', min: 0, max: 1, step: 0.05, pct: true },
+    wanderPerWeek:   { label: 'Wandering episodes per week',      min: 0.5, max: 5, step: 0.5 },
+    spuriousPerWeek: { label: 'Spurious events per week',         min: 0, max: 4, step: 0.5 }
+  };
+  var KEYS = Object.keys(SPEC);
+  function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  function onStep(v, s) { var k = (v - s.min) / s.step; return Math.abs(k - Math.round(k)) < 1e-9; }
+  function parseOne(raw, s) {
+    if (typeof raw !== 'string' || raw.length > 12) return undefined;
+    if (s.oneOf) return s.oneOf.indexOf(raw) >= 0 ? raw : undefined;
+    if (s.bool) return raw === '1' ? true : raw === '0' ? false : undefined;
+    if (!NUM.test(raw)) return undefined;
+    var v = Number(raw);
+    if (!isFinite(v) || v < s.min || v > s.max || !onStep(v, s)) return undefined;
+    if (s.int && Math.floor(v) !== v) return undefined;
+    return v;
+  }
+  function fmtValue(k, v) {
+    var s = SPEC[k];
+    if (s.fmt) return s.fmt(v);
+    if (s.pct) return Math.round(v * 100) + '%';
+    return v + (s.unit || '');
+  }
+
+  H.settings = {
+    SPEC: SPEC,
+    /** Returns { params, rejected, unknown }: params holds only valid allow-listed values. */
+    fromQuery: function (search) {
+      var q = new URLSearchParams(search || ''), params = {}, rejected = [], seen = {}, unknown = 0;
+      q.forEach(function (raw, key) {
+        if (!has(SPEC, key)) { unknown++; return; }
+        if (has(seen, key)) { delete params[key]; if (rejected.indexOf(key) < 0) rejected.push(key); return; } // repeated key: ambiguous
+        seen[key] = true;
+        var v = parseOne(raw, SPEC[key]);
+        if (v === undefined) rejected.push(key); else params[key] = v;
+      });
+      return { params: params, rejected: rejected, unknown: unknown };
+    },
+    /** Serializes params that differ from the defaults. Each value goes back through the same allow-list
+     *  check as fromQuery, and anything fromQuery would reject is left out (so it falls back to the default). */
+    toQuery: function (params) {
+      var D = H.sim.DEFAULTS, parts = [];
+      KEYS.forEach(function (k) {
+        if (!has(params, k) || params[k] === D[k]) return;
+        var v = params[k], raw = typeof v === 'boolean' ? (v ? '1' : '0') : String(v);
+        if (parseOne(raw, SPEC[k]) !== v) return;
+        parts.push(k + '=' + encodeURIComponent(raw));
+      });
+      return parts.length ? '?' + parts.join('&') : '';
+    },
+    /** Human-readable list of non-default settings, built only from allow-listed keys and parsed values. */
+    describe: function (params) {
+      var D = H.sim.DEFAULTS;
+      return KEYS.filter(function (k) { return has(params, k) && params[k] !== D[k]; })
+        .map(function (k) { return SPEC[k].label + ': ' + fmtValue(k, params[k]); });
+    }
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>
+/* HALO simulation — SVG map renderer
+ * canonical: makeMap() in how-it-works.html (from v2 js/map.js) — keep this copy in sync by hand.
+ * Not protected.
+ */
+(function (root) {
+  var H = root.HALO, Wd = H.world, NS = 'http://www.w3.org/2000/svg';
+
+  function el(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function polyD(poly) { return 'M' + poly.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' L'); }
+
+  H.makeMap = function (container, opts) {
+    opts = opts || {};
+    var SP = Wd.SP, w = (Wd.NX - 1) * SP, h = (Wd.NY - 1) * SP;
+    var svg = el('svg', { viewBox: (-260) + ' ' + (-330) + ' ' + (w + 520) + ' ' + (h + 600), role: 'img', 'class': 'map' });
+    el('title', {}, svg).textContent = 'Map of a sample neighborhood with Margaret’s home, nearby places, and safe zones';
+
+    var ground = el('g', {}, svg);
+    el('rect', { x: -260, y: -330, width: w + 520, height: h + 600, 'class': 'ground' }, ground);
+    var x, y;
+    for (x = 0; x < Wd.NX - 1; x++) for (y = 0; y < Wd.NY - 1; y++) {
+      var park = x === 0 && y === 2;
+      el('rect', { x: x * SP + 50, y: y * SP + 50, width: SP - 100, height: SP - 100, rx: 28, 'class': park ? 'park' : 'block' }, ground);
+    }
+    for (y = 0; y < Wd.NY; y++) el('path', { d: 'M-120,' + y * SP + ' H' + (w + 120), 'class': 'street' + (Wd.ART_ROWS.indexOf(y) >= 0 ? ' arterial' : '') }, ground);
+    for (x = 0; x < Wd.NX; x++) el('path', { d: 'M' + x * SP + ',-120 V' + (h + 120), 'class': 'street' + (Wd.ART_COLS.indexOf(x) >= 0 ? ' arterial' : '') }, ground);
+
+    var gRoutine = el('g', { 'class': 'layer-routine' }, svg);
+    var gMozo = el('g', { 'class': 'layer-mozo' }, svg);
+    var hp = Wd.place('home').pos;
+    var homeZone = el('circle', { cx: hp[0], cy: hp[1], r: 150, 'class': 'homezone' }, svg);
+    var gPaths = el('g', { 'class': 'layer-paths' }, svg);
+    var gPlaces = el('g', { 'class': 'layer-places' }, svg);
+
+    Wd.PLACES.forEach(function (p) {
+      var g = el('g', { 'class': 'place' + (p.key === 'home' ? ' home' : '') }, gPlaces);
+      if (p.key === 'home') {
+        el('path', { d: 'M' + (p.pos[0] - 70) + ',' + (p.pos[1] + 10) + ' l70,-70 l70,70 v70 h-140 z', 'class': 'house' }, g);
+      } else {
+        el('circle', { cx: p.pos[0], cy: p.pos[1], r: 46, 'class': 'pin' }, g);
+      }
+      var ly = p.pos[1] - (p.key === 'home' ? 90 : 70);
+      el('text', { x: p.pos[0], y: ly, 'class': 'plabel long', 'text-anchor': 'middle' }, g).textContent = p.key === 'home' ? 'Home (Halo Anchor)' : p.name;
+      el('text', { x: p.pos[0], y: ly, 'class': 'plabel short', 'text-anchor': 'middle' }, g).textContent = p.short;
+    });
+
+    var trail = el('path', { 'class': 'trail', d: '' }, svg);
+    var fix = el('circle', { r: 26, 'class': 'fix', cx: hp[0], cy: hp[1] }, svg);
+    var pulse = el('circle', { r: 50, 'class': 'pulse', cx: hp[0], cy: hp[1] }, svg);
+    var tag = el('circle', { r: 46, 'class': 'tag', cx: hp[0], cy: hp[1] }, svg);
+    container.appendChild(svg);
+
+    function zones(group, list, cls) {
+      while (group.firstChild) group.removeChild(group.firstChild);
+      list.forEach(function (a) {
+        var g = el('g', { 'class': cls + (a.bad ? ' bad' : '') }, group);
+        el('path', { d: polyD(a.poly), 'stroke-width': 2 * a.W, 'class': 'corr' }, g);
+        el('circle', { cx: a.dest[0], cy: a.dest[1], r: a.W + 60, 'class': 'dest' }, g);
+      });
+    }
+
+    return {
+      svg: svg,
+      setHomeZone: function (r) { homeZone.setAttribute('r', r); },
+      setMozo: function (list) { zones(gMozo, list, 'mozo'); },
+      setRoutine: function (list) { zones(gRoutine, list, 'routine'); },
+      setPath: function (poly, cls) {
+        while (gPaths.firstChild) gPaths.removeChild(gPaths.firstChild);
+        if (poly) el('path', { d: polyD(poly), 'class': 'plan ' + (cls || '') }, gPaths);
+      },
+      setTrail: function (pts) { trail.setAttribute('d', pts && pts.length > 1 ? polyD(pts) : ''); },
+      setTag: function (p, state) {
+        tag.setAttribute('cx', p[0]); tag.setAttribute('cy', p[1]);
+        pulse.setAttribute('cx', p[0]); pulse.setAttribute('cy', p[1]);
+        tag.setAttribute('data-state', state || 'ok');
+        pulse.classList.toggle('on', state === 'alert');
+      },
+      setFix: function (p) {
+        if (!p) { fix.style.display = 'none'; return; }
+        fix.style.display = ''; fix.setAttribute('cx', p[0]); fix.setAttribute('cy', p[1]);
+      }
+    };
+  };
+})(window);
+</script>
+<script>
+/* canonical: v2 js/day.js, copied unchanged below this comment. Not protected; only used here.
+ * It needs HALO.sim and HALO.makeMap, and gets its run from the page startup script below. */
+/* HALO simulation — "A simulated day": minute-by-minute playback of one day from the experiment */
+(function (root) {
+  var H = root.HALO, Wd = H.world, S;
+  var COLORS = { 'static': 'var(--muted)', routine: 'var(--routine)', mozo: 'var(--mozo)', hybrid: 'var(--zone)' };
+  var run = null, di = 0, minute = 480, playing = false, lastTs = 0, map;
+  function $(id) { return document.getElementById(id); }
+  function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+  function day() { return run.days[di]; }
+  function fmt(m) { return S.fmtTime(m); }
+
+  var FINDERS = [
+    { label: 'one-off appointment', test: function (d) { return d.outs.some(function (o) { return o.kind === 'irregular'; }); } },
+    { label: 'wandering at night', test: function (d) { return d.wanders.some(function (w) { return !w.venue && (w.start >= 1200 || w.start < 240); }); } },
+    { label: 'walking away from a venue', test: function (d) { return d.wanders.some(function (w) { return w.venue; }); } },
+    { label: 'MoZo false alarm', test: function (d) { return d.stats.mozo.fa > 0; } },
+    { label: 'calendar mistake', test: function (d) { return d.events.some(function (e) { return e.issue && !e.spurious; }); } },
+    { label: 'spurious event', test: function (d) { return d.spurious.length > 0; } }
+  ];
+  function find(f) {
+    for (var k = 1; k <= run.days.length; k++) {
+      var j = (di + k) % run.days.length;
+      if (f.test(run.days[j])) { setDay(j, firstInteresting(run.days[j], f)); return; }
+    }
+    $('dFinders').querySelector('.hint').textContent = 'No day with ' + f.label + ' in this run.';
+  }
+  function firstInteresting(d) {
+    var t = 1440;
+    d.outs.forEach(function (o) { t = Math.min(t, o.depart - 20); });
+    d.wanders.forEach(function (w) { t = Math.min(t, w.start - 20); });
+    return t >= 1440 ? 480 : Math.max(0, t);
+  }
+
+  function isWander(d, m) { return d.wanders.some(function (w) { return m >= w.start && m <= w.end + 5; }); }
+
+  function renderFacts() {
+    var d = day(), items = [];
+    d.outs.forEach(function (o) {
+      var ev = d.events.filter(function (e) { return e.outing === o; })[0];
+      var bits = [o.kind === 'habit' ? 'Weekly habit' : 'One-off trip'];
+      bits.push(ev ? (ev.issue ? 'on calendar with a problem: ' + ev.issue : ev.caught ? 'on calendar (read-back fixed: ' + ev.caught + ')' : 'on calendar') : 'never mentioned, so not on calendar');
+      if (o.detour) bits.push('took a different route');
+      if (o.errand) bits.push('quick stop off the route');
+      items.push({ t: o.depart, cls: 'outing', html: '<b>' + fmt(o.depart) + '\u2013' + fmt(o.back) + '</b> ' + esc(S.place(o.place).name) + '<div class="sub">' + esc(bits.join('; ')) + '</div>' });
+    });
+    d.wanders.forEach(function (w) {
+      var res = S.DETECTORS.map(function (D) { var v = w[D.key]; return D.name + ': ' + (v == null ? 'missed' : v + ' min'); });
+      items.push({ t: w.start, cls: 'wander', html: '<b>' + fmt(w.start) + '</b> Wandering' + (w.venue ? ' away from ' + esc(S.place(w.venue).name) : ' (' + w.pattern + ' pattern)') +
+        '<div class="sub">Time to alert after leaving the zone \u2014 ' + esc(res.join(' \u00b7 ')) + '</div>' });
+    });
+    d.spurious.forEach(function (s) {
+      items.push({ t: s.start, cls: 'issue', html: '<b>' + fmt(s.start) + '</b> Spurious event for ' + esc(S.place(s.place).name) +
+        '<div class="sub">' + (s.blocked ? 'Rejected by the caregiver approval gate' : 'Not caught: MoZo opened a zone Margaret never asked for') + '</div>' });
+    });
+    if (!items.length) items.push({ t: 0, cls: '', html: 'A quiet day at home. No outings, no wandering.' });
+    items.sort(function (a, b) { return a.t - b.t; });
+    $('dFacts').innerHTML = items.map(function (i) { return '<li class="' + i.cls + '">' + i.html + '</li>'; }).join('');
+  }
+
+  function runs(arr) {
+    var out = [], s = -1;
+    for (var m = 0; m <= arr.length; m++) {
+      var v = m < arr.length ? arr[m] : 0;
+      if (v && s < 0) s = m;
+      if (!v && s >= 0) { out.push([s, m]); s = -1; }
+    }
+    return out;
+  }
+  function renderTimeline() {
+    var d = day(), L = 150, Wp = 840, X = function (m) { return L + m / 1440 * Wp; };
+    var rows = [
+      { lbl: 'What happened' }, { lbl: 'MoZo windows' }, { lbl: 'Routine windows' }
+    ].concat(S.DETECTORS.map(function (D) { return { lbl: 'Alerts: ' + D.name, det: D.key }; }));
+    var top = 22, rh = 20, gap = 7, h = top + rows.length * (rh + gap) + 4;
+    var s = '<svg viewBox="0 0 1000 ' + h + '" id="dTl" role="img" aria-label="Timeline of the day"><defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2" height="6" fill="var(--alert)"/></pattern></defs>';
+    for (var hr = 0; hr <= 24; hr += 3) {
+      s += '<line class="tl-tick" x1="' + X(hr * 60) + '" x2="' + X(hr * 60) + '" y1="16" y2="' + (h - 2) + '"/>';
+      s += '<text class="tl-hour" x="' + X(hr * 60) + '" y="11" text-anchor="middle">' + (hr === 0 || hr === 24 ? '12a' : hr === 12 ? '12p' : hr < 12 ? hr + 'a' : (hr - 12) + 'p') + '</text>';
+    }
+    rows.forEach(function (r, i) {
+      var y = top + i * (rh + gap);
+      s += '<text class="tl-lbl" x="0" y="' + (y + 14) + '">' + esc(r.lbl) + '</text>';
+      s += '<rect class="tl-row" x="' + L + '" y="' + y + '" width="' + Wp + '" height="' + rh + '" rx="4"/>';
+      var bar = function (a, b, cls, text) {
+        var x1 = X(Math.max(0, a)), x2 = X(Math.min(1440, b)), w = Math.max(2, x2 - x1);
+        var out = '<rect class="' + cls + '" x="' + x1 + '" y="' + y + '" width="' + w + '" height="' + rh + '" rx="3"/>';
+        if (text && w > 46) out += '<text class="tl-text" x="' + (x1 + 4) + '" y="' + (y + 14) + '">' + esc(text) + '</text>';
+        return out;
+      };
+      if (i === 0) {
+        d.outs.forEach(function (o) { s += bar(o.depart, o.back, 'tl-out', S.place(o.place).short); });
+        d.wanders.forEach(function (w) { s += bar(w.start, w.end, 'tl-wander', 'Wander'); });
+      } else if (i === 1) {
+        d.mozoA.forEach(function (a) { s += bar(a.from, a.to, 'tl-mozo' + (a.event.issue ? ' bad' : ''), a.label); });
+      } else if (i === 2) {
+        d.routA.forEach(function (a) { s += bar(a.from, a.to, 'tl-routine', a.label); });
+      } else {
+        runs(d.res[r.det].alarm).forEach(function (rn) {
+          // split each alarm run into the part during wandering (real) and the rest (false alarm)
+          var segStart = rn[0], cur = isWander(d, rn[0]);
+          for (var m = rn[0] + 1; m <= rn[1]; m++) {
+            var w = m < rn[1] ? isWander(d, m) : !cur;
+            if (w !== cur) { s += bar(segStart, m, cur ? 'tl-true' : 'tl-false'); segStart = m; cur = w; }
+          }
+        });
+      }
+    });
+    s += '<line class="tl-head" id="dHead" x1="' + X(minute) + '" x2="' + X(minute) + '" y1="14" y2="' + h + '"/></svg>';
+    $('dTimeline').innerHTML = s;
+    var svg = $('dTl');
+    svg.addEventListener('click', function (e) {
+      var r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 1000;
+      seek(Math.round((x - L) / Wp * 1440));
+    });
+  }
+
+  function renderFrame() {
+    var d = day(), m = Math.max(0, Math.min(1439, Math.floor(minute)));
+    $('dDow').textContent = S.DOW[d.dow] + ', day ' + (d.d + 1);
+    $('dTime').textContent = fmt(m);
+    var head = $('dHead'); if (head) { var x = 150 + m / 1440 * 840; head.setAttribute('x1', x); head.setAttribute('x2', x); }
+
+    var activeM = d.mozoA.filter(function (a) { return m >= a.from && m <= a.to; }).map(function (a) { return { poly: a.poly, dest: a.dest, W: run.params.W, bad: !!a.event.issue }; });
+    var activeR = d.routA.filter(function (a) { return m >= a.from && m <= a.to; }).map(function (a) { return { poly: a.poly, dest: a.dest, W: run.params.W }; });
+    map.setMozo(activeM); map.setRoutine(activeR);
+
+    var trail = [];
+    for (var k = Math.max(0, m - 25); k <= m; k++) trail.push([d.tx[k], d.ty[k]]);
+    map.setTrail(trail);
+    map.setFix(isNaN(d.ox[m]) ? null : [d.ox[m], d.oy[m]]);
+
+    var hp = Wd.place('home').pos, q = [d.tx[m], d.ty[m]], st = 'ok';
+    if (d.res.hybrid.alarm[m]) st = 'alert';
+    else if (Wd.dist(q, hp) > run.params.R) st = activeM.length ? 'mozo' : 'routine';
+    map.setTag(q, st);
+
+    var wand = isWander(d, m);
+    $('dDets').innerHTML = S.DETECTORS.map(function (D) {
+      var on = d.res[D.key].alarm[m];
+      var chip = on ? '<span class="state on' + (wand ? '' : ' false') + '">' + (wand ? 'Alerting' : 'False alarm') + '</span>' : '<span class="state">Quiet</span>';
+      return '<li><span class="nm"><i class="key" style="background:' + COLORS[D.key] + '"></i>' + D.name + '</span>' + chip + '</li>';
+    }).join('');
+  }
+
+  function setDay(j, m) {
+    di = (j + run.days.length) % run.days.length;
+    minute = m == null ? minute : m;
+    $('dLabel').textContent = 'Day ' + (di + 1) + ' of ' + run.days.length;
+    map.setHomeZone(run.params.R);
+    renderFacts(); renderTimeline(); renderFrame();
+  }
+  function seek(m) { minute = Math.max(0, Math.min(1439, m)); renderFrame(); }
+  function tick(ts) {
+    if (!playing) return;
+    var dt = lastTs ? (ts - lastTs) / 1000 : 0; lastTs = ts;
+    minute += dt * (+$('dSpeed').value);
+    if (minute >= 1439) { minute = 1439; stop(); }
+    renderFrame();
+    if (playing) requestAnimationFrame(tick);
+  }
+  function play() { if (minute >= 1439) minute = 0; playing = true; lastTs = 0; $('dPlay').textContent = 'Pause'; requestAnimationFrame(tick); }
+  function stop() { playing = false; $('dPlay').textContent = 'Play day'; }
+
+  H.day = {
+    init: function () {
+      S = H.sim;
+      map = H.makeMap($('dMap'));
+      var f = $('dFinders');
+      FINDERS.forEach(function (F) {
+        var b = document.createElement('button'); b.className = 'chip'; b.textContent = F.label;
+        b.addEventListener('click', function () { stop(); find(F); });
+        f.appendChild(b);
+      });
+      $('dPrev').addEventListener('click', function () { stop(); setDay(di - 1, firstInteresting(run.days[(di - 1 + run.days.length) % run.days.length])); });
+      $('dNext').addEventListener('click', function () { stop(); setDay(di + 1, firstInteresting(run.days[(di + 1) % run.days.length])); });
+      $('dPlay').addEventListener('click', function () { playing ? stop() : play(); });
+    },
+    setRun: function (r) {
+      run = r;
+      var start = 0;
+      for (var j = 0; j < r.days.length; j++) {
+        var d = r.days[j];
+        if (d.outs.some(function (o) { return o.kind === 'irregular'; }) && d.wanders.length) { start = j; break; }
+      }
+      stop();
+      setDay(start, firstInteresting(r.days[start]));
+    },
+    stop: stop,
+    key: function (e) {
+      if (e.key === ' ') { e.preventDefault(); playing ? stop() : play(); }
+      if (e.key === 'ArrowRight') { stop(); seek(minute + 15); }
+      if (e.key === 'ArrowLeft') { stop(); seek(minute - 15); }
+    }
+  };
+})(window);
+</script>
+<script>
+/* Page startup — replaces the v2 tab controller (js/main.js) for this page only.
+ * Reads settings from the query string, runs the simulator once, and hands the run to the day view.
+ */
+(function (root) {
+  var H = root.HALO;
+  function $(id) { return document.getElementById(id); }
+
+  function showSettings(parsed) {
+    var box = $('dSettings'), changed = H.settings.describe(parsed.params);
+    box.textContent = '';
+    var main = document.createElement('span');
+    if (changed.length) {
+      var b = document.createElement('b'); b.textContent = 'Custom settings: ';
+      main.appendChild(b); main.appendChild(document.createTextNode(changed.join(' · ')));
+    } else {
+      var d = document.createElement('b'); d.textContent = "The paper's default settings";
+      main.appendChild(d); main.appendChild(document.createTextNode(' (seed ' + H.sim.DEFAULTS.seed + ', ' + (H.sim.DEFAULTS.days / 7) + ' weeks)'));
+    }
+    box.appendChild(main);
+    if (parsed.rejected.length || parsed.unknown) {
+      var w = document.createElement('span'); w.className = 'warn';
+      var bits = [];
+      if (parsed.rejected.length) bits.push('Ignored invalid ' + parsed.rejected.map(function (k) { return H.settings.SPEC[k].label.toLowerCase(); }).join(', ') + ' (using the default)');
+      if (parsed.unknown) bits.push(parsed.unknown + ' unknown setting' + (parsed.unknown > 1 ? 's' : '') + ' ignored');
+      w.textContent = bits.join('; ') + '.';
+      box.appendChild(w);
+    }
+    var a = document.createElement('a');
+    a.href = 'experiment.html' + H.settings.toQuery(parsed.params);
+    a.textContent = 'Change settings on the Experiment page';
+    box.appendChild(a);
+  }
+
+  // Narrow screens: the timeline scrolls inside its card, so bring the playhead into view whenever it is redrawn.
+  function followHead() {
+    var body = document.querySelector('.timeline .body'), head = $('dHead'), svg = $('dTl');
+    if (!head || !svg || body.scrollWidth <= body.clientWidth) return;
+    var x = (+head.getAttribute('x1')) / 1000 * svg.getBoundingClientRect().width;
+    body.scrollLeft = Math.max(0, x - body.clientWidth / 3);
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var parsed = H.settings.fromQuery(root.location.search);
+    new MutationObserver(followHead).observe($('dTimeline'), { childList: true });
+    H.day.init();
+    showSettings(parsed);
+    setTimeout(function () {
+      var r = H.sim.run(parsed.params);
+      H.dayRun = r; // exposed for the page's verification harness
+      H.day.setRun(r);
+      $('dBusy').hidden = true;
+    }, 30);
+    // canonical: keydown filter from v2 js/main.js
+    document.addEventListener('keydown', function (e) {
+      var tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+      if (H.dayRun) H.day.key(e);
+    });
+  });
+})(window);
+</script>
+</body>
+</html>
