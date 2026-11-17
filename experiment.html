@@ -958,7 +958,7 @@ footer a{color:inherit}
   function renderRun(r) {
     var sm = r.summary, D = S.DETECTORS.map(function (d) { return d.key; });
     $('eCharts').innerHTML =
-      barChart('False alarms per week', 'Alerts during legitimate outings. Lower is better. Whiskers show 95% intervals.',
+      barChart('False alarms per week', 'Alerts when no wandering is happening (most occur during legitimate outings). Lower is better. Whiskers show 95% intervals.',
         D.map(function (k) { return { key: k, v: sm[k].faWeek, lo: sm[k].faLo, hi: sm[k].faHi }; }), { fmt: f1 }) +
       barChart('Wandering caught within 5 min', 'Share of episodes alerted within five minutes of leaving the zone. Higher is better.',
         D.map(function (k) { return { key: k, v: sm[k].fastRate, lo: NaN, hi: NaN }; }), { fmt: pc, max: 1.15 }) +

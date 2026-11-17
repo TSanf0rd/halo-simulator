@@ -71,7 +71,7 @@ outings 131 wanders 57 events 84
   (how-it-works, simulated-day, experiment).
 - Settings pass between pages only through the query string, parsed against an allow-list
   with numeric range checks. Never `eval` or write raw query values into HTML.
-- Keep v2's design tokens (Atkinson Hyperlegible; teal = home geofence, indigo = MoZo,
+- Keep v2's design tokens (Atkinson Hyperlegible; teal = home geofence and the MoZo + routine detector, indigo = MoZo,
   ochre = learned routine, crimson = alert) and light/dark support on every page.
 - Pages must work from `file://` and offline (system-font fallback).
 - Never-public terms: see `NEVER_PUBLIC.local.md` (local, untracked, gitignored). These must not appear anywhere,
