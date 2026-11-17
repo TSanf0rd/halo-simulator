@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>About the model · HALO Simulator</title>
+<meta name="description" content="What HALO is, what is real and what is simulated, the four detectors, every assumption behind the numbers, how to read the metrics, and how to share a run.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+/* Design tokens — canonical: index.html (taken unchanged from v2 css/style.css). Keep in sync by hand.
+ * Color carries meaning: teal = home geofence, indigo = MoZo, ochre = learned routine, crimson = alert.
+ */
+:root{
+  --bg:#F3F6F7; --card:#FFFFFF; --paper:#E6ECEE; --street:#FFFFFF; --park:#CFE3D2; --block:#D6DEE3;
+  --ink:#1C2A39; --muted:#566676; --line:#D2DADF;
+  --zone:#23877B; --zone-soft:#E1F1EE;
+  --mozo:#4F63C9; --mozo-soft:#E8EBFA;
+  --routine:#A0731F; --routine-soft:#F6EEDC;
+  --alert:#C8324A; --alert-soft:#FBE7EA;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10161D; --card:#18212B; --paper:#1A242E; --street:#2A3743; --park:#1F3528; --block:#212C37;
+    --ink:#E5ECF1; --muted:#98A7B4; --line:#2B3946;
+    --zone:#4CB6A8; --zone-soft:#17322E;
+    --mozo:#8C9BF2; --mozo-soft:#232A4A;
+    --routine:#D9A441; --routine-soft:#3A2F17;
+    --alert:#F2687E; --alert-soft:#3A1E25;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10161D; --card:#18212B; --paper:#1A242E; --street:#2A3743; --park:#1F3528; --block:#212C37;
+  --ink:#E5ECF1; --muted:#98A7B4; --line:#2B3946;
+  --zone:#4CB6A8; --zone-soft:#17322E;
+  --mozo:#8C9BF2; --mozo-soft:#232A4A;
+  --routine:#D9A441; --routine-soft:#3A2F17;
+  --alert:#F2687E; --alert-soft:#3A1E25;
+}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.5}
+:focus-visible{outline:3px solid var(--mozo);outline-offset:2px}
+
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+/* ---------- masthead (canonical: index.html) ---------- */
+.top{background:var(--card);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;padding-top:14px;padding-bottom:14px}
+.mark{font-weight:700;letter-spacing:.14em;font-size:.9rem;color:inherit;text-decoration:none}
+.mark span{color:var(--muted);font-weight:400;letter-spacing:.02em;margin-left:8px}
+.top nav{display:flex;flex-wrap:wrap;gap:4px 18px}
+.top nav a{color:var(--muted);font-size:.9rem;text-decoration:none}
+.top nav a:hover{color:var(--ink);text-decoration:underline}
+.top nav a[aria-current="page"]{color:var(--ink);font-weight:700}
+
+/* ---------- page head (canonical: how-it-works.html) ---------- */
+.pagehead{padding:28px 0 6px}
+.pagehead h1{margin:0;font-size:clamp(1.5rem,2.6vw,2rem);line-height:1.15;letter-spacing:-0.01em}
+.intro{color:var(--muted);max-width:72ch;margin:10px 0 0}
+
+/* ---------- about (canonical: v2 css/style.css .prose) ---------- */
+.prose{max-width:72ch}
+.prose h2{font-size:1.2rem;margin:36px 0 8px;scroll-margin-top:16px}
+.prose h3{font-size:1rem;margin:22px 0 6px}
+.prose p,.prose li{line-height:1.6}
+.prose table{border-collapse:collapse;font-size:.92rem;margin:8px 0;width:100%}
+.prose td,.prose th{border-bottom:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+.prose th{color:var(--muted);font-weight:400}
+.prose td.v{white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:700}
+.prose code{font-size:.9em;background:var(--paper);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+.prose a{color:var(--ink)}
+.tblwrap{overflow-x:auto}
+.toc{margin:22px 0 0;padding:14px 18px;background:var(--card);border:1px solid var(--line);border-radius:14px;max-width:72ch}
+.toc p{margin:0 0 6px;font-size:.82rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.toc ol{margin:0;padding-left:1.3em;columns:2;column-gap:28px}
+.toc a{color:var(--ink)}
+.det{display:grid;gap:10px;margin:10px 0;padding:0;list-style:none}
+.det li{padding:10px 14px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:10px}
+/* Detector colors — canonical: COLORS in simulated-day.html / experiment.html, so the key matches their charts. */
+.det li.static{border-left-color:var(--muted)}
+.det li.routine{border-left-color:var(--routine)}
+.det li.mozo{border-left-color:var(--mozo)}
+.det li.hybrid{border-left-color:var(--zone)}
+.example{display:block;margin:8px 0;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:10px;font-size:.9rem;overflow-wrap:anywhere}
+
+/* ---------- footer (canonical: index.html) ---------- */
+footer{margin-top:48px;border-top:1px solid var(--line)}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 24px;padding-top:18px;padding-bottom:28px;font-size:.88rem;color:var(--muted)}
+footer p{margin:0}
+footer a{color:inherit}
+
+@media (max-width:600px){
+  .toc ol{columns:1}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="mark" href="index.html">HALO<span>Simulator</span></a>
+    <nav aria-label="Pages">
+      <a href="how-it-works.html">How it works</a>
+      <a href="simulated-day.html">A simulated day</a>
+      <a href="experiment.html">Experiment</a>
+      <a href="about.html" aria-current="page">About the model</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="pagehead">
+      <h1>About the model</h1>
+    </div>
+    <p class="intro">This page describes the simulation behind the other pages: what is real and what is made up, every assumed number, and how to read the results. The values listed here are the defaults in the engine's code (<code>HALO.sim.DEFAULTS</code> and the constants beside it), so they are what the simulated day and the experiment actually use.</p>
+
+    <nav class="toc" aria-label="On this page">
+      <p>On this page</p>
+      <ol>
+        <li><a href="#what">What HALO is</a></li>
+        <li><a href="#real">What is real and what is simulated</a></li>
+        <li><a href="#detectors">The four detectors</a></li>
+        <li><a href="#assumptions">Key assumptions</a></li>
+        <li><a href="#metrics">How to read the metrics</a></li>
+        <li><a href="#share">Sharing a run</a></li>
+        <li><a href="#credits">Credits</a></li>
+      </ol>
+    </nav>
+
+    <article class="prose">
+      <h2 id="what">What HALO is</h2>
+      <p>HALO (Safety Harness for Dynamic Localization) is a dementia-safety research project at Missouri University of Science and Technology. It combines a home base station (Halo Anchor), a wearable tracker (Halo Tag), and a conversational scheduling system (Synthetic Memory with the VIVA voice assistant). The idea that ties them together is the Mobile Zone, or MoZo: a safe zone that widens along the route to a confirmed appointment, only for that appointment's time window.</p>
+      <p>The design principle behind the assistant is <em>ask, don't assume</em>. Halo collects what, when, where, who, and how long through conversation, reads the event back, and changes nothing until the person says yes. A wrong default is not an inconvenience here; it reshapes a safety boundary.</p>
+
+      <h2 id="real">What is real and what is simulated</h2>
+      <div class="tblwrap">
+        <table>
+          <tr><th scope="col">Part</th><th scope="col">Status on this site</th></tr>
+          <tr><td>Conversation and pipeline in "How it works"</td><td>Scripted to match the real pipeline's stages and the "ask, don't assume" design</td></tr>
+          <tr><td>Neighborhood, places, and people (Margaret, Sarah, Martha)</td><td>Fictional: a 10 × 7 street grid with 400 m blocks and nine named places</td></tr>
+          <tr><td>Outings, wandering, GPS tracks, calendar events</td><td>Synthetic, generated from the assumptions below with a fixed seed (2026 by default)</td></tr>
+          <tr><td>Simulation parameters</td><td>Assumptions, every one listed below</td></tr>
+          <tr><td>Extraction error rate</td><td>7%, set from the pipeline's validation F1 of about 0.93 (20 samples, so treat as rough)</td></tr>
+          <tr><td>Four wandering patterns</td><td>The taxonomy is real (Martino-Saltzman et al., 1991); every instance here is synthetic</td></tr>
+          <tr><td>Detectors and scoring</td><td>Implemented here; the logic is what a real system would run on the same inputs</td></tr>
+          <tr><td>Participant data, real GPS, real transcripts</td><td>None. Nothing real about any person appears on this site</td></tr>
+        </table>
+      </div>
+
+      <h2 id="detectors">The four detectors</h2>
+      <p>All four watch the same GPS fixes on the same days, so differences between them come from the detectors, not from luck.</p>
+      <ul class="det">
+        <li class="static"><strong>Static geofence</strong> alerts whenever the tag leaves the home circle.</li>
+        <li class="routine"><strong>Learned routine</strong> also allows trips it has seen to the same place on the same weekday at least three times in four weeks of location history, a stand-in for commercial routine-learning trackers.</li>
+        <li class="mozo"><strong>MoZo</strong> allows trips that match a confirmed calendar event: a corridor along the route, a zone around the destination, and a time window padded by travel time and a buffer.</li>
+        <li class="hybrid"><strong>MoZo + routine</strong> allows a trip if either of the two would.</li>
+      </ul>
+
+      <h2 id="assumptions">Key assumptions</h2>
+      <p>Each value below is the default in the code. Settings marked <em>adjustable</em> can be changed on the Experiment page; the rest are fixed.</p>
+
+      <h3>Everyday outings</h3>
+      <ul>
+        <li>Five weekly habits, each happening 85% of the time: church on Sunday (9:00 AM, 90 min), the pharmacy on Monday (3:00 PM, 20 min), the grocery on Tuesday (10:00 AM, 45 min) and Saturday (10:30 AM, 45 min), and the community center on Thursday (1:00 PM, 2 h). Start times vary by about 10 minutes.</li>
+        <li>On about 30% of days there is also a one-off trip (clinic, a friend's house, a diner, or the bank), starting between 9:00 AM and 5:00 PM and lasting 45 minutes to 2 hours. It is dropped if it would start within four hours of that day's habit.</li>
+        <li>She leaves 3 to 12 minutes earlier than needed, parks 20 to 150 m from the address, and the visit ends anywhere from 5 minutes early to 25 minutes late. Driving covers 450&nbsp;m a minute; walking, 55&nbsp;m.</li>
+      </ul>
+      <div class="tblwrap">
+        <table>
+          <tr><th scope="col">Assumption</th><th scope="col">Default</th><th scope="col">Notes</th></tr>
+          <tr><td>Trip takes a different route</td><td class="v" data-param="detour" data-value="0.15">15%</td><td>Adjustable. The corridor follows the usual route, so a detour can leave it.</td></tr>
+          <tr><td>Quick stop just off the route</td><td class="v" data-param="errand" data-value="0.25">25%</td><td>Adjustable. Only on routes longer than 800 m; the stop is 150 to 320 m off the route for 3 to 8 minutes.</td></tr>
+          <tr><td>Walks away from the venue during a visit</td><td class="v" data-param="venueWander" data-value="0.05">5%</td><td>Only visits of 30 minutes or more; the walk lasts 30 to 70 minutes.</td></tr>
+        </table>
+      </div>
+
+      <h3>Wandering</h3>
+      <ul>
+        <li>Episodes start from home, last 45 to 110 minutes, and never overlap an outing. About 25% start at night, 35% in the late afternoon (3:00 to 7:00 PM, "sundowning"), and 40% during the day.</li>
+        <li>Each follows one of the four patterns described in dementia research, chosen with equal odds: direct, random, lapping, or pacing.</li>
+      </ul>
+      <div class="tblwrap">
+        <table>
+          <tr><th scope="col">Assumption</th><th scope="col">Default</th><th scope="col">Notes</th></tr>
+          <tr><td>Wandering episodes per week</td><td class="v" data-param="wanderPerWeek" data-value="2">2</td><td>Adjustable. Random (Poisson) count each day, averaging this rate.</td></tr>
+        </table>
+      </div>
+
+      <h3>Conversation to calendar</h3>
+      <ul>
+        <li>Habits are mentioned less often than one-off trips, because people rarely announce routine errands. This is why MoZo alone misses habitual trips and the hybrid exists.</li>
+        <li>With "ask, don't assume", missing fields are filled by asking. With "fill in defaults", the assistant guesses one missing field: a 9:00 AM start, a one-hour length, or no location (which means no zone is built at all). A guess that happens to be right, like 9:00 AM for church, does no harm.</li>
+        <li>An extraction error shifts the event by one to three hours, earlier or later.</li>
+        <li>Halo's read-back happens only with "ask, don't assume". When it catches a wrong event, the event is corrected before it is saved.</li>
+        <li>Spurious events go to a random place, between 10:00 AM and 10:00 PM, for one hour.</li>
+      </ul>
+      <div class="tblwrap">
+        <table>
+          <tr><th scope="col">Assumption</th><th scope="col">Default</th><th scope="col">Notes</th></tr>
+          <tr><td>Assistant behavior</td><td class="v" data-param="assistant" data-value="ask">Ask, don't assume</td><td>Adjustable: or "fill in defaults".</td></tr>
+          <tr><td>Habitual outings mentioned in conversation</td><td class="v" data-param="captureHabit" data-value="0.6">60%</td><td>Adjustable.</td></tr>
+          <tr><td>One-off outings mentioned in conversation</td><td class="v" data-param="captureIrregular" data-value="0.95">95%</td><td></td></tr>
+          <tr><td>Mentions that already contain every field</td><td class="v" data-param="pComplete" data-value="0.55">55%</td><td></td></tr>
+          <tr><td>Extraction error rate</td><td class="v" data-param="extractErr" data-value="0.07">7%</td><td>About 1 − validation F1.</td></tr>
+          <tr><td>Wrong events caught by read-back</td><td class="v" data-param="readbackCatch" data-value="0.8">80%</td><td>"Ask, don't assume" only.</td></tr>
+          <tr><td>Spurious events per week</td><td class="v" data-param="spuriousPerWeek" data-value="1">1</td><td>Adjustable. Hallucinated by the model, or injected, e.g. by a TV in the room.</td></tr>
+          <tr><td>Caregiver approval gate</td><td class="v" data-param="gate" data-value="true">On</td><td>Adjustable. Applies to spurious events.</td></tr>
+          <tr><td>Spurious events rejected by the caregiver</td><td class="v" data-param="gateCatch" data-value="0.95">95%</td><td>When the gate is on.</td></tr>
+        </table>
+      </div>
+
+      <h3>Zones and alerts</h3>
+      <ul>
+        <li>A MoZo window opens before the event by the travel time plus the buffer, and closes the same amount after it ends. The destination zone reaches 60 m beyond the corridor half-width (210 m by default).</li>
+        <li>The learned routine uses the 28 days before the run. A place visited on the same weekday three or more times becomes an allowance from the earliest departure to the latest return seen, padded by the same buffer.</li>
+        <li>An alert fires after two consecutive out-of-zone GPS fixes (one per minute) and clears after ten in-zone fixes. A missing fix leaves the alert as it was.</li>
+      </ul>
+      <div class="tblwrap">
+        <table>
+          <tr><th scope="col">Assumption</th><th scope="col">Default</th><th scope="col">Notes</th></tr>
+          <tr><td>Home geofence radius</td><td class="v" data-param="R" data-value="150">150 m</td><td>Adjustable.</td></tr>
+          <tr><td>Corridor half-width</td><td class="v" data-param="W" data-value="150">150 m</td><td>Adjustable. Distance from the route that still counts as on the way.</td></tr>
+          <tr><td>Time buffer around events</td><td class="v" data-param="buf" data-value="20">20 min</td><td>Adjustable.</td></tr>
+          <tr><td>GPS noise (1 standard deviation)</td><td class="v" data-param="sigma" data-value="15">15 m</td><td>Adjustable.</td></tr>
+          <tr><td>GPS fixes missing</td><td class="v" data-param="dropout" data-value="0.03">3%</td><td></td></tr>
+        </table>
+      </div>
+
+      <h3>The run</h3>
+      <div class="tblwrap">
+        <table>
+          <tr><th scope="col">Assumption</th><th scope="col">Default</th><th scope="col">Notes</th></tr>
+          <tr><td>Random seed</td><td class="v" data-param="seed" data-value="2026">2026</td><td>Adjustable. Each day is generated from the seed and its day number, so every detector and setting sees identical days.</td></tr>
+          <tr><td>Length of the run</td><td class="v" data-param="days" data-value="168">24 weeks</td><td>Adjustable (168 days).</td></tr>
+        </table>
+      </div>
+
+      <h2 id="metrics">How to read the metrics</h2>
+      <p><strong>False alarms per week</strong> counts alerts that start when no wandering is happening (an alert that starts during an episode, or within five minutes after it ends, counts as real).</p>
+      <p><strong>Caught within 5 min</strong> is the share of wandering episodes that triggered an alert within five minutes of leaving the zone: the home circle, or 150 m from the venue for a walk away from a visit. Episodes that never leave the zone are not counted. <strong>Caught at all</strong> is the share that triggered an alert at any point before the episode ended (or within five minutes after). <strong>Avg. min to alert</strong> is the average delay from leaving the zone to the alert, over the episodes that were caught.</p>
+      <p><strong>Zone open while home</strong> counts hours per week when an allowance window is open while Margaret is not on an outing. During those hours, wandering along that route could go unnoticed. It is the safety cost of a wider zone, and it is where hallucinated or injected events show up. The static geofence never opens, so it is always zero.</p>
+      <p>The range shown next to false alarms per week is a 95% bootstrap interval over days (400 resamples).</p>
+      <p>In this model every detector eventually notices someone leaving the area, so the meaningful differences are in false alarms, speed, and how long the zone is open. Real-world performance would depend on hardware, GPS quality indoors and outdoors, and real people's routines, none of which this site measures.</p>
+
+      <h2 id="share">Sharing a run</h2>
+      <p>The pages share no memory, so settings travel in the link. Because the engine is seeded, the same link always regenerates exactly the same days and the same numbers, on any computer. For example, this opens a day under "fill in defaults" with a 200 m corridor:</p>
+      <code class="example">simulated-day.html?assistant=assume&amp;W=200</code>
+      <p>On the Experiment page, change the settings and run, then use <strong>Watch a day from this run</strong>: that link carries every setting you changed, and it is the one to copy and share. The simulated day links back to the Experiment page with the same settings. A link with no settings uses the defaults above, which are the paper's configuration.</p>
+      <p>Only the adjustable settings can travel in a link: <code>seed</code>, <code>days</code>, <code>assistant</code>, <code>gate</code>, <code>W</code>, <code>buf</code>, <code>R</code>, <code>sigma</code>, <code>detour</code>, <code>errand</code>, <code>captureHabit</code>, <code>wanderPerWeek</code>, and <code>spuriousPerWeek</code>. <code>assistant</code> takes <code>ask</code> or <code>assume</code>, <code>gate</code> takes <code>1</code> or <code>0</code>, and settings left at their default are left out of the link. Each is checked against the same range and step as its Experiment control. A setting the page does not recognize is ignored, and a value that is malformed, out of range, off its step, or repeated falls back to the default. Either way, the page says so above the results.</p>
+
+      <h2 id="credits">Credits</h2>
+      <p>HALO research team, Department of Computer Science, Missouri S&amp;T, with faculty advisor guidance. The simulation was built for demonstration and discussion.</p>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>HALO research team, Missouri S&amp;T</p>
+    <p><a href="index.html">All pages</a> · A simulation for demonstration and discussion. It measures design behavior, not clinical performance.</p>
+  </div>
+</footer>
+</body>
+</html>

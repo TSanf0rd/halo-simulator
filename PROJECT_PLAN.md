@@ -50,6 +50,6 @@ The list lives in a local, untracked file (`NEVER_PUBLIC.local.md`, gitignored);
 | 3 — how-it-works.html | Done | 2026-10-20 | this commit |
 | 4 — simulated-day.html | Done | 2026-10-20 | this commit |
 | 5 — experiment.html | Done | 2026-10-20 | this commit |
-| 6 — about.html | Not started | — | — |
+| 6 — about.html | Done | 2026-11-16 | this commit |
 | Preflight | Not started | — | — |
 | Deploy | Not started | — | — |
